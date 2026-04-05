@@ -58,7 +58,7 @@ def check (env : Std.HashMap String Typ) : Typ → Term → Bool
   | τ, .and2 (.prod α β, y) =>
     τ == β && check env (.prod α β) y
   | .sum α β, .or (γ, z) =>
-    (γ == α ∨ γ == β) && check env γ z
+    (γ == α || γ == β) && check env γ z
   | _, _ => false
 
 -- theorem false_empty (h : ∀ x, (_ : x ∈ env.keys) → env[x]'(by grind) != .fls) : check env .fls t == false := by
