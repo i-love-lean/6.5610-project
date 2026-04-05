@@ -37,7 +37,31 @@ inductive Term
   /-- Construct a sum -/
   | or : Typ × Term → Term
 
--- TODO: Convert `Term` into Lurk s-expression
+def Typ.toString : Typ → String
+  | new α => s!"(cons \"new\" \"{α}\")"
+  | fn α β => s!"(list \"fn\" {α.toString} {β.toString})"
+  | prod α β => s!"(list \"prod\" {α.toString} {β.toString})"
+  | sum α β => s!"(list \"sum\" {α.toString} {β.toString})"
+  | fls => s!"'(\"fls\")"
+
+instance : ToString Typ := ⟨Typ.toString⟩
+
+mutual
+def toString (t : Typ × Term) := s!"(cons {t.1} {t.2.toString})"
+
+def Term.toString : Term → String
+  | .var x => s!"(cons \"var\" \"{x}\")"
+  | .lam x b => s!"(list \"lam\" \"{x}\" {toString b})"
+  | .app f x => s!"(list \"app\" {toString f} {toString x})"
+  | .and x y => s!"(list \"and\" {toString x} {toString y})"
+  | .and1 x => s!"(cons \"and1\" {toString x})"
+  | .and2 y => s!"(cons \"and2\" {toString y})"
+  | .or z => s!"(list \"or\" {toString z})"
+end
+
+instance : ToString (Typ × Term) := ⟨toString⟩
+
+-- TODO: Write an evaluator
 
 /--
 The type checker!
@@ -61,9 +85,6 @@ def check (env : Std.HashMap String Typ) : Typ → Term → Bool
     (γ == α || γ == β) && check env γ z
   | _, _ => false
 
--- theorem false_empty (h : ∀ x, (_ : x ∈ env.keys) → env[x]'(by grind) != .fls) : check env .fls t == false := by
---   cases t <;> try grind [check]
-
 /-- A → B → B ∧ A -/
 def a_imp_b_imp_ba := (Typ.fn (.new "A") (.fn (.new "B") (.prod (.new "B") (.new "A"))), Term.lam "a" (.fn (.new "B") (.prod (.new "B") (.new "A")), .lam "b" (.prod (.new "B") (.new "A"), .and (.new "B", .var "b") (.new "A", .var "a"))))
 
@@ -78,3 +99,5 @@ def ab_imp_ba := (Typ.fn (.prod (.new "A") (.new "B")) (.prod (.new "B") (.new "
 def not_ab_imp_not_a := (Typ.fn (.fn (.sum (.new "A") (.new "B")) .fls) (.fn (.new "A") .fls), Term.lam "f" (.fn (.new "A") .fls, .lam "x" (.fls, .app (.fn (.sum (.new "A") (.new "B")) .fls, .var "f") (.sum (.new "A") (.new "B"), .or (.new "A", .var "x")))))
 
 #guard check (.ofList []) not_ab_imp_not_a.1 not_ab_imp_not_a.2
+
+#eval IO.println not_ab_imp_not_a
