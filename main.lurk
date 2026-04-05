@@ -1,0 +1,56 @@
+!(def typ (lambda (x) (car (cdr x))))
+
+!(def funtl (lambda (x) (car (cdr (typ x)))))
+
+!(def funtr (lambda (x) (car (cdr (cdr (typ x))))))
+
+!(def funv (lambda (x) (car (cdr (cdr x)))))
+
+!(def funb (lambda (x) (car (cdr (cdr (cdr x))))))
+
+!(def check (lambda (x)
+  (if (eq (car x) "fun")
+      (if (eq (car (typ x)) "fun")
+          (if (eq (car ()))
+
+
+               let ((car (cdr (cdr x))) (car (cdr (car (cdr x)))))
+               (check ))
+      nil
+
+
+      )
+    
+
+  ) (if (eq (car x) "app") (
+                        )
+
+    (if (eq (car x) "prod")) (
+    )
+    (if (eq (car x) "sum")) ())
+    nil))))
+
+
+
+(check
+  (list "fun" (list "fun" "A" (list "fun" "B" (list "prod" "B" "A"))) "a"
+    (list "fun" (list "fun" "B" (cons "B" "A")) "b"
+      (list "prod" (list "list" "B" "A") "b" "a"))))
+
+123
+
+(+ 1 1)
+
+!(def square (lambda (x) (* x x)))
+
+(square 8)
+
+!(def make-adder
+   (lambda (n)
+     (lambda (x)
+       (+ x n))))
+
+!(def five-plus
+   (make-adder 5))
+
+(five-plus 3)
