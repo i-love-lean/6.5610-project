@@ -52,7 +52,7 @@ inductive Term
   /-- One or greater as a nat -/
   | succ : Typ × Term → Term
   /-- Eliminator (recursor) for nats -/
-  | nat_elim : Typ → Typ × Term → Typ × Term → Term
+  | nat_elim : Typ → Typ × Term → Typ × Term → Typ × Term → Term
   /-- Eliminator for false -/
   | fls_elim : Typ × Term → Term
 
@@ -70,8 +70,8 @@ mutual
 def toString (t : Typ × Term) := s!"(cons {t.1} {t.2.toString})"
 
 def Term.toString : Term → String
-  | .var x => s!"(cons \"var\" \"{x}\")"
-  | .lam x b => s!"(list \"lam\" \"{x}\" {toString b})"
+  | .var x => s!"(cons \"var\" '{x})"
+  | .lam x b => s!"(list \"lam\" '{x} {toString b})"
   | .app f x => s!"(list \"app\" {toString f} {toString x})"
   | .and x y => s!"(list \"and\" {toString x} {toString y})"
   | .and1 x => s!"(cons \"and1\" {toString x})"
@@ -79,7 +79,7 @@ def Term.toString : Term → String
   | .or z => s!"(cons \"or\" {toString z})"
   | .zero => s!"'(\"zero\")"
   | .succ x => s!"(cons \"succ\" {toString x})"
-  | .nat_elim τ a b => s!"(list \"nat_elim\" {τ} {toString a} {toString b})"
+  | .nat_elim τ a b c => s!"(list \"nat_elim\" {τ} {toString a} {toString b} {toString c})"
   | .fls_elim x => s!"(cons \"fls_elim\" {toString x})"
 end
 
@@ -111,12 +111,30 @@ def check (env : Std.HashMap String Typ) : Typ → Term → Bool
     true
   | .nat, .succ (α, x) =>
     α == .nat && check env α x
-  | .fn .nat τ, .nat_elim α (β, a) (.fn γ δ, b) =>
-    τ == α && τ == β && τ == γ && τ == δ && check env β a && check env (.fn γ δ) b
+  | .fn .nat τ, .nat_elim α (.nat, a) (β, b) (.fn .nat (.fn γ δ), c) =>
+    τ == α && τ == β && τ == γ && τ == δ && check env .nat a && check env β b && check env (.fn .nat (.fn γ δ)) c
   | _, .fls_elim (.fls, _) =>
     true
   | _, _ =>
     false
+
+theorem false_empty : check (.ofList []) .fls t == false := by
+  sorry
+
+-- def eval env (venv : Std.HashMap String Term) τ t (h : check env τ t) (henv : ∀ x, x ∈ env.keys → x ∈ venv.keys) : Term :=
+--   match τ, t with
+--   | _, .var x =>
+--     venv[x]'(by sorry)
+--   | .fn α β, .lam x (β', b) =>
+--     .lam x (eval (env.insert x α) venv β b (by sorry) (by sorry))
+--   | .app (.fn α β, f) (α', x) =>
+--     eval
+
+def a_imp_a := (Typ.fn (.new "A") (.new "A"), Term.lam "a" (.new "A", .var "a"))
+
+#guard check (.ofList []) a_imp_a.1 a_imp_a.2
+
+#eval IO.println a_imp_a
 
 /-- A → B → B ∧ A -/
 def a_imp_b_imp_ba := (Typ.fn (.new "A") (.fn (.new "B") (.prod (.new "B") (.new "A"))), Term.lam "a" (.fn (.new "B") (.prod (.new "B") (.new "A")), .lam "b" (.prod (.new "B") (.new "A"), .and (.new "B", .var "b") (.new "A", .var "a"))))
@@ -133,8 +151,6 @@ def not_ab_imp_not_a := (Typ.fn (.fn (.sum (.new "A") (.new "B")) .fls) (.fn (.n
 
 #guard check (.ofList []) not_ab_imp_not_a.1 not_ab_imp_not_a.2
 
-#eval IO.println not_ab_imp_not_a
-
 /-- 2 exists (yeah I know this is not super exciting) -/
 def two := (Typ.nat, Term.succ (.nat, (.succ (.nat, .zero))))
 
@@ -146,7 +162,7 @@ def four := (Typ.nat, Term.succ (.nat, (.succ two)))
 #guard check (.ofList []) four.1 four.2
 
 /-- Addition -/
-def add := (Typ.fn .nat (.fn .nat .nat), Term.lam "a" (.fn .nat .nat, .nat_elim .nat (.nat, .var "a") (.fn .nat .nat, .lam "b" (.nat, .succ (.nat, .var "b")))))
+def add := (Typ.fn .nat (.fn .nat .nat), Term.lam "a" (.fn .nat .nat, .nat_elim .nat (.nat, .zero) (.nat, .var "a") (.fn .nat (.fn .nat .nat), .lam "_" (.fn .nat .nat, .lam "b" (.nat, .succ (.nat, .var "b"))))))
 
 #guard check (.ofList []) add.1 add.2
 
