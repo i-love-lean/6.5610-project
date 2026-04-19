@@ -57,7 +57,7 @@ inductive Term
   | fls_elim : Typ × Term → Term
 
 def Typ.toString : Typ → String
-  | new α => s!"(cons \"new\" \"{α}\")"
+  | new α => s!"(list \"new\" \"{α}\")"
   | fn α β => s!"(list \"fn\" {α.toString} {β.toString})"
   | prod α β => s!"(list \"prod\" {α.toString} {β.toString})"
   | sum α β => s!"(list \"sum\" {α.toString} {β.toString})"
@@ -70,17 +70,17 @@ mutual
 def toString (t : Typ × Term) := s!"(cons {t.1} {t.2.toString})"
 
 def Term.toString : Term → String
-  | .var x => s!"(cons \"var\" '{x})"
+  | .var x => s!"(list \"var\" '{x})"
   | .lam x b => s!"(list \"lam\" '{x} {toString b})"
   | .app f x => s!"(list \"app\" {toString f} {toString x})"
   | .and x y => s!"(list \"and\" {toString x} {toString y})"
-  | .and1 x => s!"(cons \"and1\" {toString x})"
-  | .and2 y => s!"(cons \"and2\" {toString y})"
-  | .or z => s!"(cons \"or\" {toString z})"
+  | .and1 x => s!"(list \"and1\" {toString x})"
+  | .and2 y => s!"(list \"and2\" {toString y})"
+  | .or z => s!"(list \"or\" {toString z})"
   | .zero => s!"'(\"zero\")"
-  | .succ x => s!"(cons \"succ\" {toString x})"
+  | .succ x => s!"(list \"succ\" {toString x})"
   | .nat_elim τ a b c => s!"(list \"nat_elim\" {τ} {toString a} {toString b} {toString c})"
-  | .fls_elim x => s!"(cons \"fls_elim\" {toString x})"
+  | .fls_elim x => s!"(list \"fls_elim\" {toString x})"
 end
 
 instance : ToString (Typ × Term) := ⟨toString⟩
@@ -121,6 +121,7 @@ def check (env : Std.HashMap String Typ) : Typ → Term → Bool
 theorem false_empty : check (.ofList []) .fls t == false := by
   sorry
 
+-- TODO: Implement eval so we can state 2 + 2 = 4
 -- def eval env (venv : Std.HashMap String Term) τ t (h : check env τ t) (henv : ∀ x, x ∈ env.keys → x ∈ venv.keys) : Term :=
 --   match τ, t with
 --   | _, .var x =>
@@ -141,15 +142,21 @@ def a_imp_b_imp_ba := (Typ.fn (.new "A") (.fn (.new "B") (.prod (.new "B") (.new
 
 #guard check (.ofList []) a_imp_b_imp_ba.1 a_imp_b_imp_ba.2
 
+#eval IO.println a_imp_b_imp_ba
+
 /-- A ∧ B → B ∧ A -/
 def ab_imp_ba := (Typ.fn (.prod (.new "A") (.new "B")) (.prod (.new "B") (.new "A")), Term.lam "ab" (.prod (.new "B") (.new "A"), .and (.new "B", .and2 (.prod (.new "A") (.new "B"), .var "ab")) (.new "A", .and1 (.prod (.new "A") (.new "B"), .var "ab"))))
 
 #guard check (.ofList []) ab_imp_ba.1 ab_imp_ba.2
 
+#eval IO.println ab_imp_ba
+
 /-- ¬(A ∨ B) → ¬A -/
 def not_ab_imp_not_a := (Typ.fn (.fn (.sum (.new "A") (.new "B")) .fls) (.fn (.new "A") .fls), Term.lam "f" (.fn (.new "A") .fls, .lam "x" (.fls, .app (.fn (.sum (.new "A") (.new "B")) .fls, .var "f") (.sum (.new "A") (.new "B"), .or (.new "A", .var "x")))))
 
 #guard check (.ofList []) not_ab_imp_not_a.1 not_ab_imp_not_a.2
+
+#eval IO.println not_ab_imp_not_a
 
 /-- 2 exists (yeah I know this is not super exciting) -/
 def two := (Typ.nat, Term.succ (.nat, (.succ (.nat, .zero))))
