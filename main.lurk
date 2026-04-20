@@ -1,32 +1,32 @@
-; Get second element of list (0-indexed)
+;; Get second element of list (0-indexed)
 !(def arg1 (lambda (x) (car (cdr x))))
 
-; Get left element of tuple at second position in list
+;; Get left element of tuple at second position in list
 !(def arg1a (lambda (x) (car (arg1 x))))
 
 !(def arg1b (lambda (x) (cdr (arg1 x))))
 
-; Get third element of list
+;; Get third element of list
 !(def arg2 (lambda (x) (car (cdr (cdr x)))))
 
 !(def arg2a (lambda (x) (car (arg2 x))))
 
 !(def arg2b (lambda (x) (cdr (arg2 x))))
 
-; Boolean and
+;; Boolean and
 !(def and (lambda (x y) (if x (if y t nil) nil)))
 
-; Boolean or
+;; Boolean or
 !(def or (lambda (x y) (if x t (if y t nil))))
 
-; NEED defrec instead of def for recursive functions
-; TODO: Implement nats
+;; NEED defrec instead of def for recursive functions
+;; TODO: Implement nats
 !(defrec check (lambda (env typ term)
   (if (eq (car term) "var")
     (eq typ (eval (arg1 term) env))
   (if (and (eq (car typ) "fn") (eq (car term) "lam"))
     (and (eq (arg2 typ) (arg2a term))
-      ; Crazy eval magic
+      ;; Crazy eval magic
       (check (eval (list 'let (list (list (arg1 term) (list 'quote (arg1 typ)))) '(current-env)) env) (arg2a term) (arg2b term)))
   (if (and (eq (car term) "app") (eq (car (arg1a term)) "fn"))
     (and (eq (arg1 (arg1a term)) (arg2a term)) (and (eq (arg2 (arg1a term)) typ)
@@ -64,3 +64,40 @@
 !(def not_ab_imp_not_a (cons (list "fn" (list "fn" (list "sum" (list "new" "A") (list "new" "B")) '("fls")) (list "fn" (list "new" "A") '("fls"))) (list "lam" 'f (cons (list "fn" (list "new" "A") '("fls")) (list "lam" 'x (cons '("fls") (list "app" (cons (list "fn" (list "sum" (list "new" "A") (list "new" "B")) '("fls")) (list "var" 'f)) (cons (list "sum" (list "new" "A") (list "new" "B")) (list "or" (cons (list "new" "A") (list "var" 'x)))))))))))
 
 (check (empty-env) (car not_ab_imp_not_a) (cdr not_ab_imp_not_a))
+
+;; Currently broken
+!(defprotocol not_ab_imp_not_a_protocol (term)
+  (cons
+    ;; claim definition
+    (cons (cons (list 'check (empty-env) (car not_ab_imp_not_a) term) (current-env)) t)
+    ;; post-verification predicate is not provided
+    nil)
+  :description "¬(A ∨ B) → ¬A")
+
+!(dump-expr not_ab_imp_not_a_protocol "protocol")
+
+!(prove-protocol not_ab_imp_not_a_protocol "protocol-proof" (cdr not_ab_imp_not_a))
+
+;; ;; A protocol that requires knowledge of a hash that opens to a pair such that
+;; ;; its components add up to 30. If the proof is accepted, further require that
+;; ;; the first component of the pair be greater than 10.
+;; !(defprotocol my-protocol (hash pair)
+;;   (cons
+;;     (if (= (+ (car pair) (cdr pair)) 30)
+;;       (cons (cons (cons 'open (cons hash nil)) (empty-env)) pair)
+;;       nil)
+;;     (lambda () (> (car pair) 10)))
+;;   :description "hash opens to a pair (a, b) s.t. a+b=30 and a>10")
+
+;; ;; This is the prover's pair, whose hash is
+;; ;; #c0x955f855f302a30ed988cc48685c442ebd98c8711e989fc64df8f27f52e1350
+;; (commit '(13 . 17))
+
+;; ;; Let's prove it and write the proof to the file protocol-proof
+;; !(prove-protocol my-protocol
+;;   "protocol-proof"
+;;   #c0x955f855f302a30ed988cc48685c442ebd98c8711e989fc64df8f27f52e1350
+;;   '(13 . 17))
+
+;; ;; Now it can be verified
+;; !(verify-protocol my-protocol "protocol-proof")
