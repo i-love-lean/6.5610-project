@@ -57,12 +57,12 @@ inductive Term
   | fls_elim : Typ × Term → Term
 
 def Typ.toString : Typ → String
-  | new α => s!"(list \"new\" \"{α}\")"
-  | fn α β => s!"(list \"fn\" {α.toString} {β.toString})"
-  | prod α β => s!"(list \"prod\" {α.toString} {β.toString})"
-  | sum α β => s!"(list \"sum\" {α.toString} {β.toString})"
-  | nat => s!"'(\"nat\")"
-  | fls => s!"'(\"fls\")"
+  | new α => s!"(list 0n \"{α}\")"
+  | fn α β => s!"(list 1n {α.toString} {β.toString})"
+  | prod α β => s!"(list 2n {α.toString} {β.toString})"
+  | sum α β => s!"(list 3n {α.toString} {β.toString})"
+  | nat => s!"'(4n)"
+  | fls => s!"'(5n)"
 
 instance : ToString Typ := ⟨Typ.toString⟩
 
@@ -70,17 +70,17 @@ mutual
 def toString (t : Typ × Term) := s!"(cons {t.1} {t.2.toString})"
 
 def Term.toString : Term → String
-  | .var x => s!"(list \"var\" '{x})"
-  | .lam x b => s!"(list \"lam\" '{x} {toString b})"
-  | .app f x => s!"(list \"app\" {toString f} {toString x})"
-  | .and x y => s!"(list \"and\" {toString x} {toString y})"
-  | .and1 x => s!"(list \"and1\" {toString x})"
-  | .and2 y => s!"(list \"and2\" {toString y})"
-  | .or z => s!"(list \"or\" {toString z})"
-  | .zero => s!"'(\"zero\")"
-  | .succ x => s!"(list \"succ\" {toString x})"
-  | .nat_elim τ a b c => s!"(list \"nat_elim\" {τ} {toString a} {toString b} {toString c})"
-  | .fls_elim x => s!"(list \"fls_elim\" {toString x})"
+  | .var x => s!"(list 10n '{x})"
+  | .lam x b => s!"(list 11n '{x} {toString b})"
+  | .app f x => s!"(list 12n {toString f} {toString x})"
+  | .and x y => s!"(list 13n {toString x} {toString y})"
+  | .and1 x => s!"(list 14n {toString x})"
+  | .and2 y => s!"(list 15n {toString y})"
+  | .or z => s!"(list 16n {toString z})"
+  | .zero => s!"'(17n)"
+  | .succ x => s!"(list 18n {toString x})"
+  | .nat_elim τ a b c => s!"(list 19n {τ} {toString a} {toString b} {toString c})"
+  | .fls_elim x => s!"(list 20n {toString x})"
 end
 
 instance : ToString (Typ × Term) := ⟨toString⟩
