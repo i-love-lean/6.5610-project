@@ -1,5 +1,3 @@
-import Std.Data.HashMap
-
 -- A type checker for simply typed lambda calculus with a few inductive types
 
 /--
@@ -32,9 +30,9 @@ We hardcode all the inductive type constructors and eliminators here instead of 
 -/
 inductive Term
   /-- Variable -/
-  | var : String → Term
+  | var : Nat → Term
   /-- Lambda -/
-  | lam : String → Term × Typ → Term
+  | lam : Term × Typ → Term
   /-- Function application -/
   | app : Term × Typ → Term × Typ → Term
   /-- Construct a product -/
@@ -69,8 +67,8 @@ mutual
 def toString (t : Term × Typ) := s!"(cons {t.1.toString} {t.2})"
 
 def Term.toString : Term → String
-  | .var x => s!"(list 10n '{x})"
-  | .lam x b => s!"(list 11n '{x} {toString b})"
+  | .var x => s!"(list 10n {x})"
+  | .lam b => s!"(list 11n {toString b})"
   | .app f a => s!"(list 12n {toString f} {toString a})"
   | .and x y => s!"(list 13n {toString x} {toString y})"
   | .and1 x => s!"(list 14n {toString x})"
@@ -91,11 +89,11 @@ The μLean type checker!
 
 The variable names are chosen intentionally so that i.e. `a : Term` corresponds to `α : Typ`.
 -/
-def check (env : Std.HashMap String Typ) : Term → Typ → Bool
+def check (env : List Typ) : Term → Typ → Bool
   | .var x, α =>
     (· == α) <$> env[x]? |>.getD false
-  | .lam x (b, β), .fn α β' =>
-    β' == β && check (env.insert x α) b β
+  | .lam (b, β), .fn α β' =>
+    β' == β && check (.cons α env) b β
   | .app (f, .fn α β) (a, α'), β' =>
     α' == α && β' == β && check env f (.fn α β) && check env a α
   | .and (a, α) (b, β), .prod α' β' =>
@@ -117,53 +115,53 @@ def check (env : Std.HashMap String Typ) : Term → Typ → Bool
   | _, _ =>
     false
 
-theorem false_empty : check (.ofList []) t .fls == false := by
+theorem false_empty : check [] t .fls == false := by
   sorry
 
 -- TODO: Implement eval so we can state 2 + 2 = 4
 
-def a_imp_a := (Term.lam "a" (.var "a", .new 0), Typ.fn (.new 0) (.new 0))
+def a_imp_a := (Term.lam (.var 0, .new 0), Typ.fn (.new 0) (.new 0))
 
-#guard check (.ofList []) a_imp_a.1 a_imp_a.2
+#guard check [] a_imp_a.1 a_imp_a.2
 
 #eval IO.println a_imp_a
 
 /-- A → B → B ∧ A -/
-def a_imp_b_imp_ba := (Term.lam "a" (.lam "b" (.and (.var "b", .new 1) (.var "a", .new 0), .prod (.new 1) (.new 0)), .fn (.new 1) (.prod (.new 1) (.new 0))), Typ.fn (.new 0) (.fn (.new 1) (.prod (.new 1) (.new 0))))
+def a_imp_b_imp_ba := (Term.lam (.lam (.and (.var 0, .new 1) (.var 1, .new 0), .prod (.new 1) (.new 0)), .fn (.new 1) (.prod (.new 1) (.new 0))), Typ.fn (.new 0) (.fn (.new 1) (.prod (.new 1) (.new 0))))
 
-#guard check (.ofList []) a_imp_b_imp_ba.1 a_imp_b_imp_ba.2
+#guard check [] a_imp_b_imp_ba.1 a_imp_b_imp_ba.2
 
 #eval IO.println a_imp_b_imp_ba
 
 /-- A ∧ B → B ∧ A -/
-def ab_imp_ba := (Term.lam "ab" (.and (.and2 (.var "ab", .prod (.new 0) (.new 1)), .new 1) (.and1 (.var "ab", .prod (.new 0) (.new 1)), .new 0), .prod (.new 1) (.new 0)), Typ.fn (.prod (.new 0) (.new 1)) (.prod (.new 1) (.new 0)))
+def ab_imp_ba := (Term.lam (.and (.and2 (.var 0, .prod (.new 0) (.new 1)), .new 1) (.and1 (.var 0, .prod (.new 0) (.new 1)), .new 0), .prod (.new 1) (.new 0)), Typ.fn (.prod (.new 0) (.new 1)) (.prod (.new 1) (.new 0)))
 
-#guard check (.ofList []) ab_imp_ba.1 ab_imp_ba.2
+#guard check [] ab_imp_ba.1 ab_imp_ba.2
 
 #eval IO.println ab_imp_ba
 
 /-- ¬(A ∨ B) → ¬A -/
-def not_ab_imp_not_a := (Term.lam "f" (.lam "a" (.app (.var "f", .fn (.sum (.new 0) (.new 1)) .fls) (.or (.var "a", .new 0), .sum (.new 0) (.new 1)), .fls), .fn (.new 0) .fls), Typ.fn (.fn (.sum (.new 0) (.new 1)) .fls) (.fn (.new 0) .fls))
+def not_ab_imp_not_a := (Term.lam (.lam (.app (.var 1, .fn (.sum (.new 0) (.new 1)) .fls) (.or (.var 0, .new 0), .sum (.new 0) (.new 1)), .fls), .fn (.new 0) .fls), Typ.fn (.fn (.sum (.new 0) (.new 1)) .fls) (.fn (.new 0) .fls))
 
-#guard check (.ofList []) not_ab_imp_not_a.1 not_ab_imp_not_a.2
+#guard check [] not_ab_imp_not_a.1 not_ab_imp_not_a.2
 
 #eval IO.println not_ab_imp_not_a
 
 /-- 2 exists (yeah I know this is not super exciting) -/
 def two := (Term.succ ((.succ (.zero, .nat)), .nat), Typ.nat)
 
-#guard check (.ofList []) two.1 two.2
+#guard check [] two.1 two.2
 
 /-- 4 exists -/
 def four := (Term.succ (.succ two, .nat), Typ.nat)
 
-#guard check (.ofList []) four.1 four.2
+#guard check [] four.1 four.2
 
 /-- Addition -/
-def add := (Term.lam "a" (.nat_elim .nat (.zero, .nat) (.var "a", .nat) (.lam "_" (.lam "b" (.succ (.var "b", .nat), .nat), .fn .nat .nat), .fn .nat (.fn .nat .nat)), .fn .nat .nat), Typ.fn .nat (.fn .nat .nat))
+def add := (Term.lam (.nat_elim .nat (.zero, .nat) (.var 0, .nat) (.lam (.lam (.succ (.var 2, .nat), .nat), .fn .nat .nat), .fn .nat (.fn .nat .nat)), .fn .nat .nat), Typ.fn .nat (.fn .nat .nat))
 
-#guard check (.ofList []) add.1 add.2
+#guard check [] add.1 add.2
 
 def two_plus_two := (Term.app (.app add two, .fn .nat .nat) two, Typ.nat)
 
-#guard check (.ofList []) two_plus_two.1 two_plus_two.2
+#guard check [] two_plus_two.1 two_plus_two.2
