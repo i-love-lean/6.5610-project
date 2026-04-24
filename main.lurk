@@ -20,7 +20,7 @@
 !(def or (lambda (x y) (if x t (if y t nil))))
 
 ;; Get ith element of list
-!(def geti (lambda (xs i) (if (= i 0) (car xs) (geti (cdr xs) (i i 1)))))
+!(defrec geti (lambda (xs i) (if (= i 0) (car xs) (geti (cdr xs) (- i 1)))))
 
 ;; NEED defrec instead of def for recursive functions
 ;; TODO: Implement nats
