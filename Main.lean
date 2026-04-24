@@ -11,7 +11,7 @@ TODO: Equality
 -/
 inductive Typ
   /-- New named type -/
-  | new : String → Typ
+  | new : Nat → Typ
   /-- Function type -/
   | fn : Typ → Typ → Typ
   -- All types below are inductive
@@ -55,7 +55,7 @@ inductive Term
   | fls_elim : Term × Typ → Term
 
 def Typ.toString : Typ → String
-  | new α => s!"(list 0n \"{α}\")"
+  | new α => s!"(list 0n {α}n)"
   | fn α β => s!"(list 1n {α.toString} {β.toString})"
   | prod α β => s!"(list 2n {α.toString} {β.toString})"
   | sum α β => s!"(list 3n {α.toString} {β.toString})"
@@ -120,44 +120,29 @@ theorem false_empty : check (.ofList []) t .fls == false := by
   sorry
 
 -- TODO: Implement eval so we can state 2 + 2 = 4
--- def eval env (venv : Std.HashMap String Term) t τ (h : check env t τ) (henv : ∀ x, x ∈ venv.keys → x ∈ env.keys) : Term × Typ :=
---   match t, τ with
---   | .var x, _ =>
---     (venv[x]'(by sorry), env[x]'(by sorry))
---   | .lam f (b, β'), .fn α β =>
---     (.lam f (eval (env.insert f α) venv b β (by sorry) (by sorry)), .fn α β)
---   | .app (f, .fn α β) (a, α'), β' =>
---     let (a', α'') := eval env venv a α h henv
---     let (f', _) := eval env venv f (.fn α β) h henv
---     match f' with
---     | .lam x (b, β'') => eval (env.insert x α) (venv.insert x a') b β (by sorry) (by sorry)
---     | _ => nofun
---   | .and (a, α) (b, β), τ =>
---     (.and (eval env venv a α (by sorry) henv) (eval env venv b β (by sorry) henv), τ)
 
-
-def a_imp_a := (Term.lam "a" (.var "a", .new "A"), Typ.fn (.new "A") (.new "A"))
+def a_imp_a := (Term.lam "a" (.var "a", .new 0), Typ.fn (.new 0) (.new 0))
 
 #guard check (.ofList []) a_imp_a.1 a_imp_a.2
 
 #eval IO.println a_imp_a
 
 /-- A → B → B ∧ A -/
-def a_imp_b_imp_ba := (Term.lam "a" (.lam "b" (.and (.var "b", .new "B") (.var "a", .new "A"), .prod (.new "B") (.new "A")), .fn (.new "B") (.prod (.new "B") (.new "A"))), Typ.fn (.new "A") (.fn (.new "B") (.prod (.new "B") (.new "A"))))
+def a_imp_b_imp_ba := (Term.lam "a" (.lam "b" (.and (.var "b", .new 1) (.var "a", .new 0), .prod (.new 1) (.new 0)), .fn (.new 1) (.prod (.new 1) (.new 0))), Typ.fn (.new 0) (.fn (.new 1) (.prod (.new 1) (.new 0))))
 
 #guard check (.ofList []) a_imp_b_imp_ba.1 a_imp_b_imp_ba.2
 
 #eval IO.println a_imp_b_imp_ba
 
 /-- A ∧ B → B ∧ A -/
-def ab_imp_ba := (Term.lam "ab" (.and (.and2 (.var "ab", .prod (.new "A") (.new "B")), .new "B") (.and1 (.var "ab", .prod (.new "A") (.new "B")), .new "A"), .prod (.new "B") (.new "A")), Typ.fn (.prod (.new "A") (.new "B")) (.prod (.new "B") (.new "A")))
+def ab_imp_ba := (Term.lam "ab" (.and (.and2 (.var "ab", .prod (.new 0) (.new 1)), .new 1) (.and1 (.var "ab", .prod (.new 0) (.new 1)), .new 0), .prod (.new 1) (.new 0)), Typ.fn (.prod (.new 0) (.new 1)) (.prod (.new 1) (.new 0)))
 
 #guard check (.ofList []) ab_imp_ba.1 ab_imp_ba.2
 
 #eval IO.println ab_imp_ba
 
 /-- ¬(A ∨ B) → ¬A -/
-def not_ab_imp_not_a := (Term.lam "f" (.lam "a" (.app (.var "f", .fn (.sum (.new "A") (.new "B")) .fls) (.or (.var "a", .new "A"), .sum (.new "A") (.new "B")), .fls), .fn (.new "A") .fls), Typ.fn (.fn (.sum (.new "A") (.new "B")) .fls) (.fn (.new "A") .fls))
+def not_ab_imp_not_a := (Term.lam "f" (.lam "a" (.app (.var "f", .fn (.sum (.new 0) (.new 1)) .fls) (.or (.var "a", .new 0), .sum (.new 0) (.new 1)), .fls), .fn (.new 0) .fls), Typ.fn (.fn (.sum (.new 0) (.new 1)) .fls) (.fn (.new 0) .fls))
 
 #guard check (.ofList []) not_ab_imp_not_a.1 not_ab_imp_not_a.2
 
