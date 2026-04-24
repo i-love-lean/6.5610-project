@@ -3,7 +3,7 @@ import Std.Data.HashMap
 -- A type checker for simply typed lambda calculus with a few inductive types
 
 /--
-Types in our toy language
+Types in the μLean language
 
 We use Greek letters for variables with type `Typ`
 
@@ -26,7 +26,7 @@ inductive Typ
 deriving BEq
 
 /--
-Terms in our toy language
+Terms in μLean
 
 We hardcode all the inductive type constructors and eliminators here instead of implementing them separately as axioms (which would significantly simplify the type checker) to prevent adversies from writing fake proofs that use arbitrary axioms
 -/
@@ -54,6 +54,7 @@ inductive Term
   /-- Eliminator for false -/
   | fls_elim : Term × Typ → Term
 
+/-- Convert the Lean-based μLean syntax to the Lurk-based s-exp syntax -/
 def Typ.toString : Typ → String
   | new α => s!"(list 0n {α}n)"
   | fn α β => s!"(list 1n {α.toString} {β.toString})"
@@ -86,7 +87,7 @@ instance : ToString (Term × Typ) := ⟨toString⟩
 instance : ToString Term := ⟨Term.toString⟩
 
 /--
-The type checker!
+The μLean type checker!
 
 The variable names are chosen intentionally so that i.e. `a : Term` corresponds to `α : Typ`.
 -/
