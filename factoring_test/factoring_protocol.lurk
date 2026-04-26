@@ -26,8 +26,18 @@
                     (
                         list (list 'open_a (list 'open comm_a))
                         (list 'open_b (list 'open comm_b))
+                        (list 'and (list 'lambda (list 'x 'y) (list 'if 'x (list 'if 'y t nil) nil)))
                     )
-                    (list 'eq 'open_a 89681)
+                    (list 'and 
+                        (list 'and 
+                            (list 'and
+                                (list '< 1 'open_a)
+                                (list '< 'open_a 8616460799))
+                            (list 'and
+                                (list '< 1 'open_b)
+                                (list '< 'open_b 8616460799))) 
+                        (list 'eq 8616460799 (list '* 'open_a 'open_b))
+                    )
                 )
                 ;; environment 
                 (empty-env)
@@ -43,12 +53,22 @@
 (eval (list 'eq (list 'open 'comm_a) 89681) (let ((comm_a comm_a_real)) (current-env)))
 
 (eval 
-    (emit (list 
-        'let
+    (emit 
+    (list 'let 
         (
-            list
-            (list 'open_a (list 'open comm_a_real))
+            list (list 'open_a (list 'open comm_a_real))
+            (list 'open_b (list 'open comm_b_real))
+            (list 'and (list 'lambda (list 'x 'y) (list 'if 'x (list 'if 'y t nil) nil)))
         )
-        (list 'eq 'open_a 89681)
+        (list 'and 
+            (list 'and 
+                (list 'and
+                    (list '< 1 'open_a)
+                    (list '< 'open_a 8616460799))
+                (list 'and
+                    (list '< 1 'open_b)
+                    (list '< 'open_b 8616460799))) 
+            (list 'eq 8616460799 (list '* 'open_a 'open_b))
+        )
     )
 ) (empty-env))

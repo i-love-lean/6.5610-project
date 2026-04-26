@@ -1,4 +1,11 @@
 ;; Ask ryli13 if confused about this file.
 ;; Verify the protocol
 
+;; Load protocol
+!(defq the-protocol !(load-expr "factors-8616460799"))
+
 ;; Inspect to see that nothing was leaked
+!(inspect "3e15a128f3c233ca51fe94b9bf17bbca769bc14c332fa003d7808d525d54c")
+
+;; Now verify the proof (stored at factors-8616460799-proof)
+!(verify-protocol the-protocol "factors-8616460799-proof")
