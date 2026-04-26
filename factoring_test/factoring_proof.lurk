@@ -1,0 +1,15 @@
+;; Ask ryli13 if confused about this file.
+;; Proves the protocol by giving working a and b.
+
+;; Load the protocol
+!(defq the-protocol !(load-expr "factors-8616460799"))
+
+;; Find a solution
+!(def comm_a_sol (hide #0x9040959483 89681))
+!(def comm_b_sol (hide #0x0984564598 96079))
+
+;; Prove the protocol with working a and b
+!(prove-protocol the-protocol "factors-8616460799-proof" comm_a_sol comm_b_sol)
+
+;; Inspect to make sure nothing is leaked
+!(inspect "27ec4462cf3cd60f03a3c9db2b227a5fe5134226b6d4e4a5b40b55e1c0b284")

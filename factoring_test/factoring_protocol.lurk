@@ -1,0 +1,54 @@
+;; Ask ryli13 if confused about this file.
+;; Define and dump a protocol to demonstrate knowledge of factoring 8616460799 = 89681 x 96079
+
+;; Making sure code works
+!(def and (lambda (x y) (if x (if y t nil) nil)))
+!(def a 89681)
+!(def b 96079)
+!(def comm_a_real (hide #0x8239548349 a))
+!(def comm_b_real (hide #0x3895383045 b))
+(let ((open_a (open comm_a_real))
+    (open_b (open comm_b_real)))
+    (and (and (and (< 1 open_a) (< open_a 8616460799))
+            (and (< 1 open_b) (< open_b 8616460799)))
+        (eq 8616460799 (* open_a open_b))
+    )
+)
+
+;; Defining the actual protocol
+!(defprotocol factors_found (comm_a comm_b)
+    (cons
+        ;; claim definition
+        (cons (cons 
+                ;; expression
+                ;; needs to be a quoted syntax tree
+                (list 'let 
+                    (
+                        list (list 'open_a (list 'open comm_a))
+                        (list 'open_b (list 'open comm_b))
+                    )
+                    (list 'eq 'open_a 89681)
+                )
+                ;; environment 
+                (empty-env)
+            )
+            ;; expected output
+            t )
+        ;; post-verification predicate
+        nil)
+:description "proof that one knows two non-one factors that multiply to 8616460799")
+
+!(dump-expr factors_found "factors-8616460799")
+
+(eval (list 'eq (list 'open 'comm_a) 89681) (let ((comm_a comm_a_real)) (current-env)))
+
+(eval 
+    (emit (list 
+        'let
+        (
+            list
+            (list 'open_a (list 'open comm_a_real))
+        )
+        (list 'eq 'open_a 89681)
+    )
+) (empty-env))

@@ -1,0 +1,45 @@
+;; Define simple test protocol
+!(defprotocol simple-protocol (n)
+  (cons
+    ;; claim definition
+    (cons (cons (list '= n n) (empty-env))
+          t)
+    ;; post-verification predicate is not provided
+    nil)
+  :description "(= n n) reduces to t")
+!(dump-expr simple-protocol "simple-protocol-file")
+!(defq simple-protocol !(load-expr "simple-protocol-file"))
+!(prove-protocol simple-protocol "protocol-proof" 3)
+!(inspect "56b674aa77c68bdc916a01c122da092f7a5fdc9fd0b13646382f80bebcbe99")
+!(verify-protocol simple-protocol "protocol-proof")
+
+;; THE BELOW HAS BEEN BUTCHERED SO I CAN FIGURE STUFF OUT
+;; A protocol that requires knowledge of a hash that opens to a pair such that
+;; its components add up to 30. If the proof is accepted, further require that
+;; the first component of the pair be greater than 10.
+!(defprotocol my-protocol (hash pair)
+  (cons
+    ;; claim definition
+    (cons (cons 
+      ;; expression
+      (list 'open hash)
+      ;; environment 
+      (empty-env)) 
+      ;; expected output
+      pair)
+    nil)
+  :description "hash opens to a pair (a, b) s.t. a+b=30 and a>10")
+
+;; This is the prover's pair, whose hash is
+;; #c0x955f855f302a30ed988cc48685c442ebd98c8711e989fc64df8f27f52e1350
+(commit '(13 . 17))
+
+;; Let's prove it and write the proof to the file protocol-proof
+!(prove-protocol my-protocol
+  "protocol-proof"
+  #c0x955f855f302a30ed988cc48685c442ebd98c8711e989fc64df8f27f52e1350
+  '(13 . 17))
+
+;; Now it can be verified
+!(inspect "4dadc3bcba8e53c412002249f43cb23965f3808c4a2d458920dff3ff7f997f")
+!(verify-protocol my-protocol "protocol-proof")
