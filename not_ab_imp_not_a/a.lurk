@@ -1,0 +1,59 @@
+;; lists the relevant bindings
+!(def arg1 (lambda (x) (car (cdr x))))
+
+;; Get left element of tuple at second position in list
+!(def arg1a (lambda (x) (car (arg1 x))))
+
+!(def arg1b (lambda (x) (cdr (arg1 x))))
+
+;; Get third element of list
+!(def arg2 (lambda (x) (car (cdr (cdr x)))))
+
+!(def arg2a (lambda (x) (car (arg2 x))))
+
+!(def arg2b (lambda (x) (cdr (arg2 x))))
+
+;; Boolean and
+!(def and (lambda (x y) (if x (if y t nil) nil)))
+
+;; Boolean or
+!(def or (lambda (x y) (if x t (if y t nil))))
+
+;; Get ith element of list
+!(defrec geti (lambda (xs i) (if (= i 0) (car xs) (geti (cdr xs) (- i 1)))))
+
+;; NEED defrec instead of def for recursive functions
+;; TODO: Implement nats
+!(defrec check (lambda (env term typ)
+  ;; Variable
+  (if (= (car term) 10n)
+    (eq typ (geti env (arg1 term)))
+  ;; Lambda
+  (if (and (= (car term) 11n) (= (car typ) 1n))
+    (and (eq (arg2 typ) (arg1b term))
+      (check (cons (arg1 typ) env) (arg1a term) (arg1b term)))
+  ;; Application
+  (if (and (= (car term) 12n) (= (car (arg1b term)) 1n))
+    (and (eq (arg1 (arg1b term)) (arg2b term)) (and (eq (arg2 (arg1b term)) typ)
+      (and (check env (arg1a term) (arg1b term)) (check env (arg2a term) (arg2b term)))))
+  ;; And
+  (if (and (= (car term) 13n) (= (car typ) 2n))
+    (and (eq (arg1b term) (arg1 typ)) (and (eq (arg2b term) (arg2 typ))
+      (and (check env (arg1a term) (arg1b term)) (check env (arg2a term) (arg2b term)))))
+  ;; And1
+  (if (and (= (car term) 14n) (= (car (arg1b term)) 2n))
+    (and (eq (arg1 (arg1b term)) typ)
+      (check env (arg1a term) (arg1b term)))
+  ;; And2
+  (if (and (= (car term) 15n) (= (car (arg1b term)) 2n))
+    (and (eq (arg2 (arg1b term)) typ)
+      (check env (arg1a term) (arg1b term)))
+  ;; Or
+  (if (and (= (car term) 16n) (= (car typ) 3n))
+    (and (or (eq (arg1b term) (arg1 typ)) (eq (arg1b term) (arg2 typ)))
+      (check env (arg1a term) (arg1b term)))
+  ;; False elim
+  (if (and (= (car term) 20n) (eq (car (arg1b term)) 5n))
+    t
+  nil))))))))))
+
