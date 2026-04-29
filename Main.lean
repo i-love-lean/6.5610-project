@@ -147,6 +147,20 @@ def not_ab_imp_not_a := (Term.lam (.lam (.app (.var 1, .fn (.sum (.new 0) (.new 
 
 #eval IO.println not_ab_imp_not_a
 
+/-- A → ¬¬A -/
+def a_imp_not_not_a := (Term.lam (.lam (.app (.var 0, .fn (.new 0) .fls) (.var 1, .new 0), .fls), .fn (.fn (.new 0) .fls) .fls), Typ.fn (.new 0) (.fn (.fn (.new 0) .fls) .fls))
+
+#guard check [] a_imp_not_not_a.1 a_imp_not_not_a.2
+
+#eval IO.println a_imp_not_not_a
+
+/-- ¬¬¬A → ¬A -/
+def not_not_not_a_imp_not_a := (Term.lam (.lam (.app (.var 1, .fn (.fn (.fn (.new 0) .fls) .fls) .fls) (.app a_imp_not_not_a (.var 0, .new 0), .fn (.fn (.new 0) .fls) .fls), .fls), .fn (.new 0) .fls), Typ.fn (.fn (.fn (.fn (.new 0) .fls) .fls) .fls) (.fn (.new 0) .fls))
+
+#guard check [] not_not_not_a_imp_not_a.1 not_not_not_a_imp_not_a.2
+
+#eval IO.println not_not_not_a_imp_not_a
+
 /-- 2 exists (yeah I know this is not super exciting) -/
 def two := (Term.succ ((.succ (.zero, .nat)), .nat), Typ.nat)
 
