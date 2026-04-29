@@ -21,7 +21,7 @@ inductive Typ
   | nat : Typ
   /-- False (no terms of this type) -/
   | fls : Typ
-deriving BEq
+deriving BEq, ReflBEq, LawfulBEq
 
 /--
 Terms in μLean
@@ -91,7 +91,7 @@ The variable names are chosen intentionally so that i.e. `a : Term` corresponds 
 -/
 def check (env : List Typ) : Term → Typ → Bool
   | .var x, α =>
-    (· == α) <$> env[x]? |>.getD false
+    if _ : x < env.length then env[x] == α else false
   | .lam (b, β), .fn α β' =>
     β' == β && check (.cons α env) b β
   | .app (f, .fn α β) (a, α'), β' =>
