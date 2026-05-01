@@ -115,8 +115,233 @@ def check (env : List Typ) : Term → Typ → Bool
   | _, _ =>
     false
 
-theorem false_empty : check [] t .fls == false := by
-  sorry
+/-! ### Consistency proof
+
+We give a denotational semantics: each `Typ` is interpreted as a Lean `Type`,
+and every `check`-passing term gets a corresponding inhabitant. Since `Typ.fls`
+is interpreted as `Empty`, no closed term can have type `fls`. -/
+
+@[reducible]
+def Typ.interp : Typ → Type
+  | .new _   => Unit
+  | .fn α β  => α.interp → β.interp
+  | .prod α β => α.interp × β.interp
+  | .sum α β => α.interp ⊕ β.interp
+  | .nat     => Nat
+  | .fls     => Empty
+
+/-- Semantic environment: a heterogeneous list realising each `Typ` in `env`. -/
+@[reducible]
+def Env : List Typ → Type
+  | []      => PUnit
+  | α :: αs => α.interp × Env αs
+
+def Env.get : {env : List Typ} → Env env → (i : Nat) → (h : i < env.length) → (env[i]'h).interp
+  | _ :: _,  (v, _), 0,     _ => v
+  | _ :: αs, (_, ρ), i + 1, h => Env.get (env := αs) ρ i (Nat.lt_of_succ_lt_succ h)
+
+/-- Tactic shorthand: we hit an impossible `check` outcome; close the goal. -/
+local syntax "absurdCheck" : tactic
+local macro_rules | `(tactic| absurdCheck) => `(tactic| (simp [check] at *))
+
+/-- Directly evaluate a `check`-passing term to a Lean value of its interpreted type.
+This is the model construction: it shows STLC + these inductives is consistent. -/
+def evalChk : (env : List Typ) → Env env → (t : Term) → (α : Typ) →
+    check env t α = true → α.interp
+  | env, ρ, .var x, α, h => by
+      simp only [check] at h
+      split at h
+      · rename_i hx
+        have heq : (env[x]'hx) = α := LawfulBEq.eq_of_beq h
+        exact heq ▸ Env.get ρ x hx
+      · exact absurd h Bool.false_ne_true
+  | env, ρ, .lam (b, β), α, h => by
+      cases α with
+      | fn α' β' =>
+        simp only [check, Bool.and_eq_true] at h
+        obtain ⟨hβ, hb⟩ := h
+        have e : β' = β := LawfulBEq.eq_of_beq hβ
+        subst e
+        exact fun (v : α'.interp) => evalChk (α' :: env) (v, ρ) b β' hb
+      | new _ => absurdCheck
+      | prod _ _ => absurdCheck
+      | sum _ _ => absurdCheck
+      | nat => absurdCheck
+      | fls => absurdCheck
+  | env, ρ, .app (f, φ) (a, α'), β'', h => by
+      cases φ with
+      | fn α β =>
+        simp only [check, Bool.and_eq_true] at h
+        obtain ⟨⟨⟨hα, hβ⟩, hf⟩, ha⟩ := h
+        have e1 : α' = α := LawfulBEq.eq_of_beq hα
+        have e2 : β'' = β := LawfulBEq.eq_of_beq hβ
+        subst e1; subst e2
+        exact evalChk env ρ f (.fn α' β'') hf (evalChk env ρ a α' ha)
+      | new _ => absurdCheck
+      | prod _ _ => absurdCheck
+      | sum _ _ => absurdCheck
+      | nat => absurdCheck
+      | fls => absurdCheck
+  | env, ρ, .and (a, α) (b, β), γ, h => by
+      cases γ with
+      | prod α' β' =>
+        simp only [check, Bool.and_eq_true] at h
+        obtain ⟨⟨⟨hα, hβ⟩, ha⟩, hb⟩ := h
+        have e1 : α' = α := LawfulBEq.eq_of_beq hα
+        have e2 : β' = β := LawfulBEq.eq_of_beq hβ
+        subst e1; subst e2
+        exact (evalChk env ρ a α' ha, evalChk env ρ b β' hb)
+      | new _ => absurdCheck
+      | fn _ _ => absurdCheck
+      | sum _ _ => absurdCheck
+      | nat => absurdCheck
+      | fls => absurdCheck
+  | env, ρ, .and1 (x, π), α', h => by
+      cases π with
+      | prod α β =>
+        simp only [check, Bool.and_eq_true] at h
+        obtain ⟨hα, hx⟩ := h
+        have e1 : α' = α := LawfulBEq.eq_of_beq hα
+        subst e1
+        exact (evalChk env ρ x (.prod α' β) hx).1
+      | new _ => absurdCheck
+      | fn _ _ => absurdCheck
+      | sum _ _ => absurdCheck
+      | nat => absurdCheck
+      | fls => absurdCheck
+  | env, ρ, .and2 (x, π), β', h => by
+      cases π with
+      | prod α β =>
+        simp only [check, Bool.and_eq_true] at h
+        obtain ⟨hβ, hx⟩ := h
+        have e1 : β' = β := LawfulBEq.eq_of_beq hβ
+        subst e1
+        exact (evalChk env ρ x (.prod α β') hx).2
+      | new _ => absurdCheck
+      | fn _ _ => absurdCheck
+      | sum _ _ => absurdCheck
+      | nat => absurdCheck
+      | fls => absurdCheck
+  | env, ρ, .or (c, γ), σ, h => by
+      cases σ with
+      | sum α β =>
+        simp only [check, Bool.and_eq_true, Bool.or_eq_true] at h
+        obtain ⟨hor, hc⟩ := h
+        by_cases hα : (γ == α) = true
+        · have e : γ = α := LawfulBEq.eq_of_beq hα
+          subst e
+          exact (Sum.inl (evalChk env ρ c γ hc) : (γ.sum β).interp)
+        · have hβ : (γ == β) = true := hor.resolve_left hα
+          have e : γ = β := LawfulBEq.eq_of_beq hβ
+          subst e
+          exact (Sum.inr (evalChk env ρ c γ hc) : (α.sum γ).interp)
+      | new _ => absurdCheck
+      | fn _ _ => absurdCheck
+      | prod _ _ => absurdCheck
+      | nat => absurdCheck
+      | fls => absurdCheck
+  | _, _, .zero, α, h => by
+      cases α with
+      | nat => exact (0 : Nat)
+      | new _ => absrdCheck
+      | fn _ _ => absurdCheck
+      | prod _ _ => absurdCheck
+      | sum _ _ => absurdCheck
+      | fls => absurdCheck
+  | env, ρ, .succ (n, ν), α, h => by
+      cases ν with
+      | nat =>
+        cases α with
+        | nat =>
+          simp only [check] at h
+          exact ((evalChk env ρ n .nat h) + 1 : Nat)
+        | new _ => absurdCheck
+        | fn _ _ => absurdCheck
+        | prod _ _ => absurdCheck
+        | sum _ _ => absurdCheck
+        | fls => absurdCheck
+      | new _ => absurdCheck
+      | fn _ _ => absurdCheck
+      | prod _ _ => absurdCheck
+      | sum _ _ => absurdCheck
+      | fls => absurdCheck
+  | env, ρ, .nat_elim μ (n, ν) (b, β) (f, φ), σ, h => by
+      -- The lone "successful" path: ν=nat, φ=fn nat (fn γ δ), σ=fn nat σ2.
+      -- Try every other combination → absurdCheck.
+      cases ν with
+      | nat =>
+        cases φ with
+        | fn φ1 φ2 =>
+          cases φ1 with
+          | nat =>
+            cases φ2 with
+            | fn γ δ =>
+              cases σ with
+              | fn σ1 σ2 =>
+                cases σ1 with
+                | nat =>
+                  simp only [check, Bool.and_eq_true] at h
+                  obtain ⟨⟨⟨⟨⟨⟨hμ, hβ⟩, hγ⟩, hδ⟩, hn⟩, hb⟩, hf⟩ := h
+                  have eμ : σ2 = μ := LawfulBEq.eq_of_beq hμ
+                  have eβ : σ2 = β := LawfulBEq.eq_of_beq hβ
+                  have eγ : σ2 = γ := LawfulBEq.eq_of_beq hγ
+                  have eδ : σ2 = δ := LawfulBEq.eq_of_beq hδ
+                  subst eμ; subst eβ; subst eγ; subst eδ
+                  exact fun (m : Nat) =>
+                    Nat.rec
+                      (motive := fun _ => σ2.interp)
+                      (evalChk env ρ b σ2 hb)
+                      (fun k r => evalChk env ρ f (.fn .nat (.fn σ2 σ2)) hf k r)
+                      m
+                | new _ => absurdCheck
+                | fn _ _ => absurdCheck
+                | prod _ _ => absurdCheck
+                | sum _ _ => absurdCheck
+                | fls => absurdCheck
+              | new _ => absurdCheck
+              | prod _ _ => absurdCheck
+              | sum _ _ => absurdCheck
+              | nat => absurdCheck
+              | fls => absurdCheck
+            | new _ => absurdCheck
+            | prod _ _ => absurdCheck
+            | sum _ _ => absurdCheck
+            | nat => absurdCheck
+            | fls => absurdCheck
+          | new _ => absurdCheck
+          | fn _ _ => absurdCheck
+          | prod _ _ => absurdCheck
+          | sum _ _ => absurdCheck
+          | fls => absurdCheck
+        | new _ => absurdCheck
+        | prod _ _ => absurdCheck
+        | sum _ _ => absurdCheck
+        | nat => absurdCheck
+        | fls => absurdCheck
+      | new _ => absurdCheck
+      | fn _ _ => absurdCheck
+      | prod _ _ => absurdCheck
+      | sum _ _ => absurdCheck
+      | fls => absurdCheck
+  | env, ρ, .fls_elim (x, ξ), α, h => by
+      cases ξ with
+      | fls =>
+        simp only [check] at h
+        exact (evalChk env ρ x .fls h).elim
+      | new _ => absurdCheck
+      | fn _ _ => absurdCheck
+      | prod _ _ => absurdCheck
+      | sum _ _ => absurdCheck
+      | nat => absurdCheck
+termination_by env _ t _ _ => sizeOf t
+decreasing_by all_goals (simp_wf; omega)
+
+/-- The headline: no closed term has type `fls`. -/
+theorem false_empty : ∀ {t : Term}, check [] t .fls = false := by
+  intro t
+  cases hb : check [] t .fls with
+  | false => rfl
+  | true  => exact (evalChk [] PUnit.unit t .fls hb).elim
 
 -- TODO: Implement eval so we can state 2 + 2 = 4
 
