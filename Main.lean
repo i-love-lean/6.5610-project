@@ -243,7 +243,7 @@ def evalChk : (env : List Typ) → Env env → (t : Term) → (α : Typ) →
   | _, _, .zero, α, h => by
       cases α with
       | nat => exact (0 : Nat)
-      | new _ => absrdCheck
+      | new _ => absurdCheck
       | fn _ _ => absurdCheck
       | prod _ _ => absurdCheck
       | sum _ _ => absurdCheck

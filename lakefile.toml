@@ -1,2 +1,6 @@
 name = "6-5610-project"
 version = "0.1.0"
+
+[[lean_exe]]
+name = "main"
+root = "Main"
