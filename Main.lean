@@ -110,8 +110,8 @@ def check (env : List Typ) : Term → Typ → Bool
     check env n .nat
   | .nat_elim α (n, .nat) (b, β) (f, .fn .nat (.fn γ δ)), .fn .nat τ =>
     τ == α && τ == β && τ == γ && τ == δ && check env n .nat && check env b β && check env f (.fn .nat (.fn γ δ))
-  | .fls_elim (_, .fls), _ =>
-    true
+  | .fls_elim (x, .fls), _ =>
+    check env x .fls
   | _, _ =>
     false
 
