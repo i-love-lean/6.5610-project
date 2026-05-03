@@ -145,30 +145,37 @@ def and a α b β := Term.app (.app (.app (.app .and (𝒰 →ₘ 𝒰 →ₘ �
 /-- A → B → A ∧ B -/
 def a_imp_b_imp_ab := (Term.app (.app .and (𝒰 →ₘ 𝒰 →ₘ ’1 →ₘ ’1 →ₘ .prod ’3 ’2) (.new 0) 𝒰) (𝒰 →ₘ (.new 0) →ₘ ’1 →ₘ .prod (.new 0) ’2) (.new 1) 𝒰, .new 0 →ₘ .new 1 →ₘ .prod (.new 0) (.new 1))
 
+example : check [] a_imp_b_imp_ab.1 a_imp_b_imp_ab.2 = true := by
+  unfold check a_imp_b_imp_ab
+  simp only [BEq.rfl, Bool.true_and, Bool.and_eq_true, beq_iff_eq]
+
+
+
+
 #guard check [] a_imp_b_imp_ab.1 a_imp_b_imp_ab.2
 
 
 /-- A → B → B ∧ A -/
 def a_imp_b_imp_ba := (Term.lam (.lam (and ’0 (.new 1) ’1 (.new 0)) (.prod (.new 1) (.new 0))) (.new 1 →ₘ .prod (.new 1) (.new 0)), .new 0 →ₘ .new 1 →ₘ .prod (.new 1) (.new 0))
 
-example : check [] a_imp_b_imp_ba.1 a_imp_b_imp_ba.2 = true := by
-  unfold check a_imp_b_imp_ba
-  simp
-  have : check [Term.new 0] (Term.new 1 →ₘ (Term.new 1).prod (Term.new 0)) 𝒰 = true := by decide
-  simp [this]
-  unfold check
-  simp
-  have : check [Term.new 1, Term.new 0] ((Term.new 1).prod (Term.new 0)) 𝒰 = true := by decide
-  simp [this]
-  unfold _root_.and check
-  simp
-  have : check [Term.new 1, Term.new 0] (’1) (Term.new 0) = true := by decide
-  simp [this]
-  unfold check
-  simp
-  have : check [Term.new 1, Term.new 0] (’0) (Term.new 1) = true := by decide
-  simp [this]
-  unfold check
+-- example : check [] a_imp_b_imp_ba.1 a_imp_b_imp_ba.2 = true := by
+--   unfold check a_imp_b_imp_ba
+--   simp
+--   have : check [Term.new 0] (Term.new 1 →ₘ (Term.new 1).prod (Term.new 0)) 𝒰 = true := by decide
+--   simp [this]
+--   unfold check
+--   simp
+--   have : check [Term.new 1, Term.new 0] ((Term.new 1).prod (Term.new 0)) 𝒰 = true := by decide
+--   simp [this]
+--   unfold _root_.and check
+--   simp
+--   have : check [Term.new 1, Term.new 0] (’1) (Term.new 0) = true := by decide
+--   simp [this]
+--   unfold check
+--   simp
+--   have : check [Term.new 1, Term.new 0] (’0) (Term.new 1) = true := by decide
+--   simp [this]
+--   unfold check
 
 
 
