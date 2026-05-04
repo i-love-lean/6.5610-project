@@ -1,4 +1,4 @@
--- μLean, a very simple proof assistant with dependent types!
+-- μLean, a very simple proof assistant with dependent types and polymorphism!
 
 inductive Term
   -- The basic stuff
@@ -50,16 +50,15 @@ inductive Term
   | fls_rec
 deriving BEq, ReflBEq, LawfulBEq
 
--- `infixr` doesn't work?
-notation l " ⇨ " r => Term.fn l r
-notation "λ " b:max β:max => Term.lam b β
-notation "◆ " f:max φ:max a:max α:max => Term.app f φ a α
--- The `max` fixes some precedence issues when parsing or something
-notation:max "’" r:max => Term.var r
-notation:max "₸" r:max => Term.new r
-notation "𝒰" => Term.typ
-notation "⊥" => Term.fls
-notation "ℕ" => Term.nat
+-- `infixr` doesn't work at compile time or something
+notation l " ⇨ " r => Term.fn l r -- \he
+-- `max` fixes some precedence issues when parsing
+notation "λ " b:max β:max => Term.lam b β -- \fu
+notation:max "’" r:max => Term.var r -- \rq
+notation:max "₸" r:max => Term.new r -- \te
+notation "𝒰" => Term.typ -- \McU
+notation "⊥" => Term.fls -- \bo
+notation "ℕ" => Term.nat -- \N
 
 /-- Increment free variables by 1 -/
 def incr (d : Nat) : Term → Term
@@ -67,8 +66,8 @@ def incr (d : Nat) : Term → Term
     ’(if d ≤ x then x + 1 else x)
   | (λ b β) => -- Need parentheses to avoid parsing as a Lean lambda
     λ (incr (d + 1) b) (incr (d + 1) β)
-  | ◆ f φ a α =>
-    ◆ (incr d f) (incr d φ) (incr d a) (incr d α)
+  | .app f φ a α =>
+    .app (incr d f) (incr d φ) (incr d a) (incr d α)
   | α ⇨ β =>
     incr d α ⇨ incr (d + 1) β
   | .prod α β =>
@@ -85,8 +84,8 @@ def sub (n : Nat) (s : Term) : Term → Term
     if x == n then s else ’(if n < x then x - 1 else x)
   | (λ b β) =>
     λ (sub (n + 1) (incr 0 s) b) (sub (n + 1) (incr 0 s) β)
-  | ◆ f φ a α =>
-    ◆ (sub n s f) (sub n s φ) (sub n s a) (sub n s α)
+  | .app f φ a α =>
+    .app (sub n s f) (sub n s φ) (sub n s a) (sub n s α)
   | α ⇨ β =>
     sub n s α ⇨ sub (n + 1) (incr 0 s) β
   | .prod α β =>
@@ -96,6 +95,18 @@ def sub (n : Nat) (s : Term) : Term → Term
   | .eq a a' α =>
     .eq (sub n s a) (sub n s a') (sub n s α)
   | x => x
+
+/-- Convenience wrapper around .app with currying -/
+def app (f : Term) : Term → List Term → Term
+  -- Need to eval both these guys?
+  -- Probably need to `incr 0 <$> xs`? Actually no
+  | α ⇨ β, x :: xs => app (.app f (α ⇨ β) x α) (sub 0 x β) xs
+  | _, _ => f
+
+def clean := 𝒰 ⇨ ’0 ⇨ (’1 ⇨ .eq ’1 ’0 ’2 ⇨ 𝒰) ⇨ app ’0 (’2 ⇨ .eq ’2 ’0 ’3 ⇨ 𝒰) [’1, app .rfl (𝒰 ⇨ ’0 ⇨ .eq ’0 ’0 ’1) [’2, ’2]] ⇨ ’3 ⇨ .eq ’3 ’0 ’4 ⇨ app ’3 (’5 ⇨ .eq ’5 ’0 ’6 ⇨ 𝒰) [’1, ’0]
+
+#reduce clean
+#reduce 𝒰 ⇨ ’0 ⇨ (’1 ⇨ .eq ’1 ’0 ’2 ⇨ 𝒰) ⇨ .app (.app ’0 (’2 ⇨ .eq ’2 ’0 ’3 ⇨ 𝒰) ’1 ’2) (.eq ’1 ’1 ’2 ⇨ 𝒰) (.app (.app .rfl (𝒰 ⇨ ’0 ⇨ .eq ’0 ’0 ’1) ’2 𝒰) (’2 ⇨ .eq ’0 ’0 ’3) ’2 ’3) (.eq ’1 ’1 ’2) ⇨ ’3 ⇨ .eq ’3 ’0 ’4 ⇨ .app (.app ’3 (’5 ⇨ .eq ’5 ’0 ’6 ⇨ 𝒰) ’1 ’5) (.eq ’4 ’1 ’5) ’0 (.eq ’4 ’1 ’5)
 
 -- /-- -/
 -- def defeq (env : List Term) a a' α :=
@@ -108,7 +119,7 @@ def check (env : List Term) : Term → Term → Bool
     if _ : x < env.length then env[x] == α else false
   | λ b β, α ⇨ β' =>
     β' == β && (β == 𝒰 || check (incr 0 <$> (α :: env)) β 𝒰) && check (incr 0 <$> (α :: env)) b β
-  | ◆ f (α ⇨ β) a α', β' =>
+  | .app f (α ⇨ β) a α', β' =>
     α' == α && β' == sub 0 a β && check env f (α ⇨ β) && check env a α
   | .new _, 𝒰
   | .nat, 𝒰
@@ -127,9 +138,8 @@ def check (env : List Term) : Term → Term → Bool
   | .inl, 𝒰 ⇨ 𝒰 ⇨ ’1 ⇨ .sum ’2 ’1
   | .inr, 𝒰 ⇨ 𝒰 ⇨ ’0 ⇨ .sum ’2 ’1
   | .rfl, 𝒰 ⇨ ’0 ⇨ .eq ’0 ’0 ’1
-  -- https://lean-lang.org/theorem_proving_in_lean4/Inductive-Types/#inductive-families
-  | .eq_rec, 𝒰 ⇨ ’0 ⇨ (’1 ⇨ .eq ’1 ’0 ’2 ⇨ 𝒰) ⇨ ◆ (◆ ’0 (’2 ⇨ .eq ’2 ’0 ’3 ⇨ 𝒰) ’1 ’2) (.eq ’1 ’1 ’2 ⇨ 𝒰) (◆ (◆ .rfl (𝒰 ⇨ ’0 ⇨ .eq ’0 ’0 ’1) ’2 𝒰) (’2 ⇨ .eq ’0 ’0 ’3) ’2 ’3) (.eq ’1 ’1 ’2) ⇨ ’3 ⇨ .eq ’3 ’0 ’4 ⇨ ◆ (◆ ’3 (’5 ⇨ .eq ’5 ’0 ’6 ⇨ 𝒰) ’1 ’5) (.eq ’4 ’1 ’5) ’0 (.eq ’4 ’1 ’5)
-  | .nat_rec, (ℕ ⇨ 𝒰) ⇨ ◆ ’0 (ℕ ⇨ 𝒰) .zero ℕ ⇨ (ℕ ⇨ ◆ ’2 (ℕ ⇨ 𝒰) ’0 ℕ ⇨ ◆ ’3 (ℕ ⇨ 𝒰) (◆ .succ (ℕ ⇨ ℕ) ’1 ℕ) ℕ) ⇨ ℕ ⇨ ◆ ’0 ℕ ’3 (ℕ ⇨ 𝒰)
+  | .eq_rec, 𝒰 ⇨ ’0 ⇨ (’1 ⇨ .eq ’1 ’0 ’2 ⇨ 𝒰) ⇨ .app (.app ’0 (’2 ⇨ .eq ’2 ’0 ’3 ⇨ 𝒰) ’1 ’2) (.eq ’1 ’1 ’2 ⇨ 𝒰) (.app (.app .rfl (𝒰 ⇨ ’0 ⇨ .eq ’0 ’0 ’1) ’2 𝒰) (’2 ⇨ .eq ’0 ’0 ’3) ’2 ’3) (.eq ’1 ’1 ’2) ⇨ ’3 ⇨ .eq ’3 ’0 ’4 ⇨ .app (.app ’3 (’5 ⇨ .eq ’5 ’0 ’6 ⇨ 𝒰) ’1 ’5) (.eq ’4 ’1 ’5) ’0 (.eq ’4 ’1 ’5)
+  | .nat_rec, (ℕ ⇨ 𝒰) ⇨ .app ’0 (ℕ ⇨ 𝒰) .zero ℕ ⇨ (ℕ ⇨ .app ’2 (ℕ ⇨ 𝒰) ’0 ℕ ⇨ .app ’3 (ℕ ⇨ 𝒰) (.app .succ (ℕ ⇨ ℕ) ’1 ℕ) ℕ) ⇨ ℕ ⇨ .app ’0 ℕ ’3 (ℕ ⇨ 𝒰)
   | .zero, ℕ
   | .succ, ℕ ⇨ ℕ
   | .fls_rec, ⊥ ⇨ _ =>
@@ -137,84 +147,36 @@ def check (env : List Term) : Term → Term → Bool
   | _, _ =>
     false
 
--- /-- `incr` preserves type -/
--- theorem check_incr env' (h : check (env' ++ env) t τ) (hd : env'.length = d) : check (env' ++ α :: env) (incr d t) τ := by
---   match t, τ with
---   | .var x, α =>
---     grind [check, incr]
---   | .lam b β, .fn α β' =>
---     simp [check] at h
---     simpa [check, incr] using ⟨h.1, check_incr (α :: env') h.2 (by grind)⟩
---   | .app f (.fn α β) a α', β' =>
---     simp [check] at h
---     simpa [check, incr] using ⟨⟨h.1.1, check_incr env' h.1.2 hd⟩, check_incr env' h.2 hd⟩
-
--- /-- `sub` preserves type -/
--- theorem check_sub env' (h : check (env' ++ σ :: env) t τ) (hn : n = env'.length) (hs : check (env' ++ env) s σ) : check (env' ++ env) (sub n s t) τ := by
---   match t, τ with
---   | .var x, α =>
---     grind [check, sub]
---   | .lam (b, β), .fn α β' =>
---     simp [check] at h
---     simpa [check, sub] using ⟨h.1, check_sub (α :: env') h.2 (by grind) (check_incr [] hs (by rfl))⟩
---   | .app (f, .fn α β) (a, α'), β' =>
---     simp [check] at h
---     simpa [check, sub] using ⟨⟨h.1.1, check_sub env' h.1.2 hn hs⟩, check_sub env' h.2 hn hs⟩
-
-/-- Eval without worrying about types -/
-partial def eval_untyped : Term → Term
+/-- `t` should be well-typed or bad things will happen! -/
+partial def eval (t : Term) :=
+  match t with
   | (λ b β) =>
-    λ (eval_untyped b) β
-  | ◆ f φ a α =>
-    let a' := eval_untyped a
-    match eval_untyped f with
-    | .lam b _ => eval_untyped (sub 0 (incr 0 a') b)
+    λ (eval b) (eval β)
+  | .app (.app (.app .fst _ _ _) _ _ _) _ (.app (.app (.app (.app .and _ _ _) _ _ _) _ a _) _ _ _) _ =>
+    eval a
+  | .app (.app (.app .snd _ _ _) _ _ _) _ (.app (.app (.app (.app .and _ _ _) _ _ _) _ _ _) _ b _) _ =>
+    eval b
+  | .app (.app (.app (.app .nat_rec τ₁ m τ₂) τ₃ z ℕ) τ₄ f φ) τ₅ n ℕ =>
+    match n with
+    | .zero => eval z
+    | .app .succ (ℕ ⇨ ℕ) n' ℕ => eval (.app (.app f φ n ℕ) (.app m τ₂ n' ℕ ⇨ .app m τ₂ n ℕ) (.app (.app (.app (.app .nat_rec τ₁ m τ₂) τ₃ z ℕ) τ₄ f φ) τ₅ n' ℕ) (.app m τ₂ n ℕ))
+    | _ => t
+  | .app f φ a α =>
+    let a' := eval a
+    match eval f with
+    | (λ b _) => eval (sub 0 (incr 0 a') b)
     | x => .app x φ a' α
   | α ⇨ β =>
-    (eval_untyped α) ⇨ (eval_untyped β)
+    eval α ⇨ eval β
   | .prod α β =>
-    .prod (eval_untyped α) (eval_untyped β)
-  -- and
-  -- fst
-  -- snd
+    .prod (eval α) (eval β)
   | .sum α β =>
-    .sum (eval_untyped α) (eval_untyped β)
-  -- inl
-  -- inr
+    .sum (eval α) (eval β)
   | .eq a a' α =>
-    .eq (eval_untyped a) (eval_untyped a') (eval_untyped α)
+    .eq (eval a) (eval a') (eval α)
   -- eq_rec
-  -- nat_rec
   | x =>
     x
-
-/-
-| var (x : Nat)
-  | lam (b β : Term)
-  | app (f φ a α : Term)
-  -- Types
-  | typ
-  | new (x : Nat)
-  | fn (α β : Term)
-  -- Inductive types
-  | prod (α β : Term)
-  | and
-  | fst
-  | snd
-  | sum (α β : Term)
-  | inl
-  | inr
-  | eq (a a' α : Term)
-  | rfl
-  | eq_rec
-  | nat
-  | zero
-  | succ
-  | nat_rec
-  | fls
-  | fls_rec
-  -/
-  -- | x => x
 
 /-- A → A -/
 def a_imp_a := (λ ’0 ₸0, ₸0 ⇨ ₸0)
@@ -226,13 +188,13 @@ def a_imp_a' := (λ (λ ’0 ’1) (’0 ⇨ ’1), 𝒰 ⇨ ’0 ⇨ ’1)
 
 #guard check [] a_imp_a'.1 a_imp_a'.2
 
-/-- Convenience wrapper around `.and` -/
-def and a α b β := ◆ (◆ (◆ (◆ .and (𝒰 ⇨ 𝒰 ⇨ ’1 ⇨ ’1 ⇨ .prod ’3 ’3) α 𝒰) (𝒰 ⇨ α ⇨ ’1 ⇨ .prod α ’3) β 𝒰) (α ⇨ β ⇨ .prod α β) a α) (β ⇨ .prod α β) b β
-
 /-- A → B → A ∧ B -/
-def a_imp_b_imp_ab := (◆ (◆ .and (𝒰 ⇨ 𝒰 ⇨ ’1 ⇨ ’1 ⇨ .prod ’3 ’3) ₸0 𝒰) (𝒰 ⇨ ₸0 ⇨ ’1 ⇨ .prod ₸0 ’3) ₸1 𝒰, ₸0 ⇨ ₸1 ⇨ .prod ₸0 ₸1)
+def a_imp_b_imp_ab := (app .and (𝒰 ⇨ 𝒰 ⇨ ’1 ⇨ ’1 ⇨ .prod ’3 ’3) [₸0, ₸1], ₸0 ⇨ ₸1 ⇨ .prod ₸0 ₸1)
 
 #guard check [] a_imp_b_imp_ab.1 a_imp_b_imp_ab.2
+
+/-- Convenience wrapper around `.and` -/
+def and a α b β := app .and (𝒰 ⇨ 𝒰 ⇨ ’1 ⇨ ’1 ⇨ .prod ’3 ’3) [α, β, a, b]
 
 /-- A → B → B ∧ A -/
 def a_imp_b_imp_ba := (λ (λ (and ’0 ₸1 ’1 ₸0) (.prod ₸1 ₸0)) (₸1 ⇨ .prod ₸1 ₸0), ₸0 ⇨ ₸1 ⇨ .prod ₸1 ₸0)
@@ -240,10 +202,10 @@ def a_imp_b_imp_ba := (λ (λ (and ’0 ₸1 ’1 ₸0) (.prod ₸1 ₸0)) (₸1
 #guard check [] a_imp_b_imp_ba.1 a_imp_b_imp_ba.2
 
 /-- Convenience wrapper around `.fst` -/
-def fst α β p := ◆ (◆ (◆ .fst (𝒰 ⇨ 𝒰 ⇨ .prod ’1 ’1 ⇨ ’2) α 𝒰) (𝒰 ⇨ .prod α ’1 ⇨ α) β 𝒰) (.prod α β ⇨ α) p (.prod α β)
+def fst α β p := app .fst (𝒰 ⇨ 𝒰 ⇨ .prod ’1 ’1 ⇨ ’2) [α, β, p]
 
 /-- Convenience wrapper around `.snd` -/
-def snd α β p := ◆ (◆ (◆ .snd (𝒰 ⇨ 𝒰 ⇨ .prod ’1 ’1 ⇨ ’1) α 𝒰) (𝒰 ⇨ .prod α ’1 ⇨ ’1) β 𝒰) (.prod α β ⇨ β) p (.prod α β)
+def snd α β p := app .snd (𝒰 ⇨ 𝒰 ⇨ .prod ’1 ’1 ⇨ ’1) [α, β, p]
 
 /-- A ∧ B → B ∧ A -/
 def ab_imp_ba := (λ (and (snd ₸0 ₸1 ’0) ₸1 (fst ₸0 ₸1 ’0) ₸0) (.prod ₸1 ₸0), .prod ₸0 ₸1 ⇨ .prod ₸1 ₸0)
@@ -251,25 +213,25 @@ def ab_imp_ba := (λ (and (snd ₸0 ₸1 ’0) ₸1 (fst ₸0 ₸1 ’0) ₸0) (
 #guard check [] ab_imp_ba.1 ab_imp_ba.2
 
 /-- Convenience wrapper around `.inl` -/
-def inl α β a := ◆ (◆ (◆ .inl (𝒰 ⇨ 𝒰 ⇨ ’1 ⇨ .sum ’2 ’1) α 𝒰) (𝒰 ⇨ α ⇨ .sum α ’1) β 𝒰) (α ⇨ .sum α β) a α
+def inl α β a := app .inl (𝒰 ⇨ 𝒰 ⇨ ’1 ⇨ .sum ’2 ’1) [α, β, a]
 
 /-- ¬(A ∨ B) → ¬A -/
-def not_ab_imp_not_a := (λ (λ (◆ ’1 (.sum ₸0 ₸1 ⇨ ⊥) (inl ₸0 ₸1 ’0) (.sum ₸0 ₸1)) ⊥) (₸0 ⇨ ⊥), (.sum ₸0 ₸1 ⇨ ⊥) ⇨ ₸0 ⇨ ⊥)
+def not_ab_imp_not_a := (λ (λ (app ’1 (.sum ₸0 ₸1 ⇨ ⊥) [inl ₸0 ₸1 ’0]) ⊥) (₸0 ⇨ ⊥), (.sum ₸0 ₸1 ⇨ ⊥) ⇨ ₸0 ⇨ ⊥)
 
 #guard check [] not_ab_imp_not_a.1 not_ab_imp_not_a.2
 
 /-- A → ¬¬A -/
-def a_imp_not_not_a := (λ (λ (◆ ’0 (₸0 ⇨ ⊥) ’1 ₸0) ⊥) ((₸0 ⇨ ⊥) ⇨ ⊥), ₸0 ⇨ (₸0 ⇨ ⊥) ⇨ ⊥)
+def a_imp_not_not_a := (λ (λ (app ’0 (₸0 ⇨ ⊥) [’1]) ⊥) ((₸0 ⇨ ⊥) ⇨ ⊥), ₸0 ⇨ (₸0 ⇨ ⊥) ⇨ ⊥)
 
 #guard check [] a_imp_not_not_a.1 a_imp_not_not_a.2
 
 /-- ¬¬¬A → ¬A -/
-def not_not_not_a_imp_not_a := (λ (λ (◆ ’1 (((₸0 ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) (◆ a_imp_not_not_a.1 a_imp_not_not_a.2 ’0 ₸0) ((₸0 ⇨ ⊥) ⇨ ⊥)) ⊥) (₸0 ⇨ ⊥), (((₸0 ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) ⇨ ₸0 ⇨ ⊥)
+def not_not_not_a_imp_not_a := (λ (λ (app ’1 (((₸0 ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) [app a_imp_not_not_a.1 a_imp_not_not_a.2 [’0]]) ⊥) (₸0 ⇨ ⊥), (((₸0 ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) ⇨ ₸0 ⇨ ⊥)
 
 #guard check [] not_not_not_a_imp_not_a.1 not_not_not_a_imp_not_a.2
 
 /-- Convenience wrapper around `.rfl` -/
-def rfl' a α := ◆ (◆ .rfl (𝒰 ⇨ ’0 ⇨ .eq ’0 ’0 ’1) α 𝒰) (α ⇨ .eq ’0 ’0 α) a α
+def rfl' a α := app .rfl (𝒰 ⇨ ’0 ⇨ .eq ’0 ’0 ’1) [α, a]
 
 /-- ∀ a : A, a = a -/
 def a_eq_a := (λ (rfl' ’0 ₸0) (.eq ’0 ’0 ₸0), ₸0 ⇨ .eq ’0 ’0 ₸0)
@@ -277,7 +239,7 @@ def a_eq_a := (λ (rfl' ’0 ₸0) (.eq ’0 ’0 ₸0), ₸0 ⇨ .eq ’0 ’0 
 #guard check [] a_eq_a.1 a_eq_a.2
 
 /-- Convenience wrapper around `.succ` -/
-def succ n := ◆ .succ (ℕ ⇨ ℕ) n .nat
+def succ n := app .succ (ℕ ⇨ ℕ) [n]
 
 -- /-- 2 exists (yeah I know this is not super exciting) -/
 def two := (succ (succ .zero), ℕ)
@@ -292,7 +254,13 @@ def four := (succ (succ two.1), ℕ)
 #check Nat.rec
 
 /-- `.nat_rec` where the motive always returns `ℕ` -/
-def nat_rec_nat z f := ◆ (◆ (◆ .nat_rec ((ℕ ⇨ 𝒰) ⇨ ◆ ’0 (ℕ ⇨ 𝒰) .zero ℕ ⇨ (ℕ ⇨ ◆ ’2 (ℕ ⇨ 𝒰) ’0 ℕ ⇨ ◆ ’3 (ℕ ⇨ 𝒰) (◆ .succ (ℕ ⇨ ℕ) ’1 ℕ) ℕ) ⇨ ℕ ⇨ ◆ ’0 ℕ ’3 (ℕ ⇨ 𝒰)) (λ ℕ 𝒰) (ℕ ⇨ 𝒰)) (ℕ ⇨ (ℕ ⇨ ℕ ⇨ ℕ) ⇨ ℕ ⇨ ℕ) z ℕ) ((ℕ ⇨ ℕ ⇨ ℕ) ⇨ ℕ ⇨ ℕ) f (ℕ ⇨ ℕ ⇨ ℕ)
+def nat_rec_nat z f := Term.app (.app (.app .nat_rec ((ℕ ⇨ 𝒰) ⇨ .app ’0 (ℕ ⇨ 𝒰) .zero ℕ ⇨ (ℕ ⇨ .app ’2 (ℕ ⇨ 𝒰) ’0 ℕ ⇨ .app ’3 (ℕ ⇨ 𝒰) (.app .succ (ℕ ⇨ ℕ) ’1 ℕ) ℕ) ⇨ ℕ ⇨ .app ’0 ℕ ’3 (ℕ ⇨ 𝒰)) (λ ℕ 𝒰) (ℕ ⇨ 𝒰)) (ℕ ⇨ (ℕ ⇨ ℕ ⇨ ℕ) ⇨ ℕ ⇨ ℕ) z ℕ) ((ℕ ⇨ ℕ ⇨ ℕ) ⇨ ℕ ⇨ ℕ) f (ℕ ⇨ ℕ ⇨ ℕ)
+
+#eval nat_rec_nat ₸0 ₸1
+
+def nat_rec_nat' z f := app .nat_rec ((ℕ ⇨ 𝒰) ⇨ .app ’0 (ℕ ⇨ 𝒰) .zero ℕ ⇨ (ℕ ⇨ .app ’2 (ℕ ⇨ 𝒰) ’0 ℕ ⇨ .app ’3 (ℕ ⇨ 𝒰) (.app .succ (ℕ ⇨ ℕ) ’1 ℕ) ℕ) ⇨ ℕ ⇨ .app ’0 ℕ ’3 (ℕ ⇨ 𝒰)) [λ ℕ 𝒰, z, f]
+
+#eval nat_rec_nat' ₸0 ₸1
 
 #check Nat.rec
 
@@ -301,7 +269,22 @@ def add := (λ (nat_rec_nat ’0 (λ (λ (succ ’0) (ℕ ⇨ ℕ)) ℕ)) (ℕ �
 
 #guard check [] add.1 add.2
 
--- def two_plus_two := (◆ (◆ add.1 add.2 two.1 two.2) (.fn ℕ ℕ) two.1 two.2, Termℕ)
+def zero_plus_zero := app add.1 add.2 [.zero, .zero]
+
+#eval eval (eval zero_plus_zero)
+
+def zero_plus_one := app add.1 add.2 [.zero, succ .zero]
+
+#eval eval (eval zero_plus_one)
+
+-- example : eval zero_plus_zero.1 = .zero := by
+--   unfold zero_plus_zero add
+--   simp
+--   unfold nat_rec_nat
+
+def two_plus_two := app add.1 add.2 [two.1, two.1]
+
+#eval eval (eval two_plus_two) == four.1
 
 -- #guard check [] two_plus_two.1 two_plus_two.2
 
