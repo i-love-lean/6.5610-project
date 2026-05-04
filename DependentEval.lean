@@ -50,6 +50,34 @@ inductive Term
   | fls_rec
 deriving BEq, ReflBEq, LawfulBEq
 
+def Term.toString : Term → String
+  | .var x => s!"(list 0n {x})"
+  | .lam b β => s!"(list 1n {toString b} {toString β})"
+  | .app f φ a α => s!"(list 2n {toString f} {toString φ} {toString a} {toString α})"
+  | .typ => "'(3n)"
+  | .new x => s!"(list 4n {x})"
+  | .fn α β => s!"(list 5n {toString α} {toString β})"
+  | .prod α β => s!"(list 6n {toString α} {toString β})"
+  | .and => "'(7n)"
+  | .fst => "'(8n)"
+  | .snd => "'(9n)"
+  | .sum α β => s!"(list 10n {toString α} {toString β})"
+  | .inl => "'(11n)"
+  | .inr => "'(12n)"
+  | .eq a a' α => s!"(list 13n {toString a} {toString a'} {toString α})"
+  | .rfl => "'(14n)"
+  | .eq_rec => "'(15n)"
+  | .nat => "'(16n)"
+  | .zero => "'(17n)"
+  | .succ => "'(18n)"
+  | .nat_rec => "'(19n)"
+  | .fls => "'(20n)"
+  | .fls_rec => "'(21n)"
+
+instance : ToString Term := ⟨Term.toString⟩
+
+instance : ToString (Term × Term) := ⟨fun p ↦ s!"(cons {p.1} {p.2})"⟩
+
 -- `infixr` doesn't work at compile time or something
 notation l " ⇨ " r => Term.fn l r -- \he
 -- `max` fixes some precedence issues when parsing
@@ -229,6 +257,11 @@ def a_imp_not_not_a := (λ (λ (app ’0 (₸0 ⇨ ⊥) [’1]) ⊥) ((₸0 ⇨ 
 def not_not_not_a_imp_not_a := (λ (λ (app ’1 (((₸0 ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) [app a_imp_not_not_a.1 a_imp_not_not_a.2 [’0]]) ⊥) (₸0 ⇨ ⊥), (((₸0 ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) ⇨ ₸0 ⇨ ⊥)
 
 #guard check [] not_not_not_a_imp_not_a.1 not_not_not_a_imp_not_a.2
+
+/-- Alternative proof of ¬¬¬A → ¬A -/
+def not_not_not_a_imp_not_a' := (λ (λ (app ’1 (((₸0 ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) [λ (app ’0 (₸0 ⇨ ⊥) [’1]) ⊥]) ⊥) (₸0 ⇨ ⊥), (((₸0 ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) ⇨ ₸0 ⇨ ⊥)
+
+#guard check [] not_not_not_a_imp_not_a'.1 not_not_not_a_imp_not_a'.2
 
 /-- Convenience wrapper around `.rfl` -/
 def rfl' a α := app .rfl (𝒰 ⇨ ’0 ⇨ .eq ’0 ’0 ’1) [α, a]
