@@ -1,0 +1,8 @@
+!(defq not_not_not_a_imp_not_a_protocol_loaded !(load-expr "demo_protocol"))
+
+!(def not_not_not_a_imp_not_a_solution (list 11n (cons (list 11n (cons (list 12n (cons (list 10n 1) (list 1n (list 1n (list 1n (list 0n 0n) '(5n)) '(5n)) '(5n))) (cons (list 12n (cons (list 11n (cons (list 11n (cons (list 12n (cons (list 10n 0) (list 1n (list 0n 0n) '(5n))) (cons (list 10n 1) (list 0n 0n))) '(5n))) (list 1n (list 1n (list 0n 0n) '(5n)) '(5n)))) (list 1n (list 0n 0n) (list 1n (list 1n (list 0n 0n) '(5n)) '(5n)))) (cons (list 10n 0) (list 0n 0n))) (list 1n (list 1n (list 0n 0n) '(5n)) '(5n)))) '(5n))) (list 1n (list 0n 0n) '(5n)))))
+
+!(def comm_term_test (hide #0x2903850943570 not_not_not_a_imp_not_a_solution))
+
+!(prove-protocol not_not_not_a_imp_not_a_protocol_loaded "demo_proof" comm_term_test)
+
