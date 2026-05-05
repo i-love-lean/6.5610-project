@@ -1,4 +1,4 @@
--- μLean, a very simple proof assistant based on the calculus of constructions!
+-- μLean, a very simple proof assistant based on the calculus of constructions with cumulative universes and a few inductive types!
 
 inductive Term
   -- The basic stuff
@@ -9,17 +9,15 @@ inductive Term
   /-- Function application -/
   | app (f φ a α : Term)
   -- Types
-  /-- Type of types -/
-  | typ
-  /-- Type of type of types -/
-  | typ1
+  /-- Type universes -/
+  | typ (u : Fin 2)
   /-- Dependent function type -/
   | fn (α β : Term)
   -- Inductive types
   /-- Dependent product type -/
   | prod (α β : Term)
   /-- Constructor for product -/
-  | pair
+  | pmk
   /-- Recursor for product -/
   | prod_rec
   /-- Sum type -/
@@ -44,6 +42,10 @@ inductive Term
   | succ
   /-- Recursor for nats -/
   | nat_rec
+  /-- Unit type -/
+  | unit
+  /-- Constructor for unit -/
+  | intro
   /-- False (empty type) -/
   | fls
   /-- Recursor for false -/
@@ -60,25 +62,26 @@ def Term.toString : Term → String
   | var x => s!"(list 0n {x})"
   | lam b β => s!"(list 1n {toString b} {toString β})"
   | app f φ a α => s!"(list 2n {toString f} {toString φ} {toString a} {toString α})"
-  | typ => "'(3n)"
-  | typ1 => "'(4n)"
-  | fn α β => s!"(list 5n {toString α} {toString β})"
-  | prod α β => s!"(list 6n {toString α} {toString β})"
-  | pair => "'(7n)"
-  | prod_rec => "'(8n)"
-  | sum α β => s!"(list 9n {toString α} {toString β})"
-  | inl => "'(10n)"
-  | inr => "'(11n)"
-  | sum_rec => "'(12n)"
-  | eq a a' α => s!"(list 13n {toString a} {toString a'} {toString α})"
-  | refl => "'(14n)"
-  | eq_rec => "'(15n)"
-  | nat => "'(16n)"
-  | zero => "'(17n)"
-  | succ => "'(18n)"
-  | nat_rec => "'(19n)"
-  | fls => "'(20n)"
-  | fls_rec => "'(21n)"
+  | typ u => s!"(list 3n {u})"
+  | fn α β => s!"(list 4n {toString α} {toString β})"
+  | prod α β => s!"(list 5n {toString α} {toString β})"
+  | pmk => "'(6n)"
+  | prod_rec => "'(7n)"
+  | sum α β => s!"(list 8n {toString α} {toString β})"
+  | inl => "'(9n)"
+  | inr => "'(10n)"
+  | sum_rec => "'(11n)"
+  | eq a a' α => s!"(list 12n {toString a} {toString a'} {toString α})"
+  | refl => "'(13n)"
+  | eq_rec => "'(14n)"
+  | nat => "'(15n)"
+  | zero => "'(16n)"
+  | succ => "'(17n)"
+  | nat_rec => "'(18n)"
+  | unit => "'(19n)"
+  | intro => "'(20n)"
+  | fls => "'(21n)"
+  | fls_rec => "'(22n)"
   | _ => panic "You should call dbify before using toString!"
 
 -- instance : ToString Term := ⟨Term.toString⟩
@@ -87,8 +90,8 @@ def Term.toString : Term → String
 
 -- `infixr` doesn't work at compile time or something
 notation α " ⇨ " β => fn α β -- \hey
-notation "𝒰" => typ -- \McU
-notation "𝒰₁" => typ1 -- \McU\1
+notation "𝒰" => typ 0 -- \McU
+notation "𝒰₁" => typ 1 -- \McU\1
 notation "ℕ" => nat -- \N
 notation "⊥" => fls -- \bo
 -- `max` fixes some precedence issues when parsing
@@ -111,7 +114,7 @@ def term_rec (s : α) (on_dep : α → α) (on_var : α → Nat → Term) :=
   | α ⇨ β =>
     term_rec' s α ⇨ term_rec' (on_dep s) β
   | prod α β =>
-    prod (term_rec' s α) (term_rec' (on_dep s) β)
+    prod (term_rec' s α) (term_rec' s β)
   | sum α β =>
     sum (term_rec' s α) (term_rec' s β)
   | eq a a' α =>
@@ -190,10 +193,8 @@ def dbify (names : List String) : Term → Term
     dbify names α ⇨ dbify (s :: names) β
   | α ⇨ β =>
     dbify names α ⇨ dbify ("" :: names) β
-  | prod (new s α) β =>
-    prod (dbify names α) (dbify (s :: names) β)
   | prod α β =>
-    prod (dbify names α) (dbify ("" :: names) β)
+    prod (dbify names α) (dbify names β)
   | sum α β =>
     sum (dbify names α) (dbify names β)
   | eq a a' α =>
@@ -207,11 +208,11 @@ def Term.btype (t : Term) :=
     match t with
     | 𝒰 =>
       𝒰₁
-    | pair =>
-      α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ ’β ⇨ prod ’α ’β
+    | pmk =>
+      α◆𝒰 ⇨ β◆(’α ⇨ 𝒰) ⇨ a◆’α ⇨ ap ’β (’α ⇨ 𝒰) [’a] ⇨ prod ’α ’β
     | prod_rec =>
       let μ := prod ’α ’β ⇨ 𝒰
-      α◆𝒰 ⇨ β◆𝒰 ⇨ m◆μ ⇨ (a◆’α ⇨ b◆’β ⇨ ap ’m μ [ap pair pair.btype [’α, ’β, ’a, ’b]]) ⇨ p◆(prod ’α ’β) ⇨ ap ’m μ [’p]
+      α◆𝒰 ⇨ β◆(’α ⇨ 𝒰) ⇨ m◆μ ⇨ (a◆’α ⇨ b◆(ap ’β (’α ⇨ 𝒰) [’a]) ⇨ ap ’m μ [ap pmk pmk.btype [’α, ’β, ’a, ’b]]) ⇨ p◆(prod ’α ’β) ⇨ ap ’m μ [’p]
     | inl =>
       α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ sum ’α ’β
     | inr =>
@@ -233,6 +234,10 @@ def Term.btype (t : Term) :=
     | nat_rec =>
       let μ := ℕ ⇨ 𝒰
       m◆μ ⇨ z◆(ap ’m μ [zero]) ⇨ s◆(n◆ℕ ⇨ ap ’m μ [’n] ⇨ ap ’m μ [ap succ succ.btype [’n]]) ⇨ t◆ℕ ⇨ ap ’m μ [’t]
+    | unit =>
+      𝒰
+    | intro =>
+      unit
     | ⊥ =>
       𝒰
     | fls_rec =>
@@ -249,20 +254,22 @@ partial def eval : Term → Term
   | lam b β =>
     lam (eval b) (eval β)
   | app f φ a α =>
-    match eval f, eval a with
+    let f' := eval f
+    match f', eval a with
     | lam b _, a' =>
       eval (sub (incr a') b)
-    | app (app (app (app prod_rec _ _ _) _ _ _) _ _ _) _ g γ, app (app (app (app pair _ _ _) _ _ _) _ a _) _ b _ =>
-      eval (ap g (eval γ) [a, b])
-    | app (app (app (app (app sum_rec _ _ _) _ _ _) _ _ _) _ g γ) _ _ _, app (app (app inl _ _ _) _ _ _) _ a _ =>
-      eval (ap g (eval γ) [a])
-    | app (app (app (app (app sum_rec _ _ _) _ _ _) _ _ _) _ _ _) _ g γ, app (app (app inr _ _ _) _ _ _) _ b _ =>
-      eval (ap g (eval γ) [b])
+    | app (app (app (app prod_rec _ _ _) _ _ _) _ _ _) _ g (α ⇨ γ), app (app (app (app pmk _ _ _) _ _ _) _ a _) _ b β =>
+      eval (app (app g (α ⇨ γ) a α) (sub α γ) b β)
+    | app (app (app (app (app sum_rec _ _ _) _ _ _) _ _ _) _ g γ) _ _ _, app (app (app inl _ _ _) _ _ _) _ a α =>
+      eval (app g γ a α)
+    | app (app (app (app (app sum_rec _ _ _) _ _ _) _ _ _) _ _ _) _ g γ, app (app (app inr _ _ _) _ _ _) _ b β =>
+      eval (app g γ b β)
     | app (app (app nat_rec _ _ _) _ z _) _ _ _, zero =>
       eval z
-    | app (app (app nat_rec _ m _) _ z _) _ g γ, app succ _ n _ =>
-      eval (ap g (eval γ) [n, ap nat_rec nat_rec.btype [m, z, g, n]])
-    | x, a' => app x (eval φ) a' (eval α)
+    | app (app (app nat_rec _ m _) _ _ _) _ g (ℕ ⇨ γ), app succ (ℕ ⇨ ℕ) n ℕ =>
+      eval (app (app g (ℕ ⇨ γ) n ℕ) (sub ℕ γ) (app f' φ n ℕ) (app m (ℕ ⇨ 𝒰) n ℕ))
+    | x, a' =>
+      app x (eval φ) a' (eval α)
   | α ⇨ β =>
     eval α ⇨ eval β
   | prod α β =>
@@ -287,22 +294,27 @@ def cumeq a a' :=
 /-- Only pass in trusted input for the second term! -/
 def check (env : List Term) : Term → Term → Bool
   | var x, α =>
-    if _ : x < env.length then cumeq env[x] α else false
+    if _ : x < env.length then
+      -- If `α == 𝒰₁`, then we must have previously ran `check env α 𝒰₁`
+      α == 𝒰₁ || cumeq env[x] α
+    else
+      false
   | lam b β, α ⇨ β' =>
     defeq β β' && check (incr <$> (α :: env)) b β
   | app f (α ⇨ β) a α', β' =>
     defeq α α' && cumeq (eval (sub a β)) β' && check env f (α ⇨ β) && check env a α
-  | α ⇨ β, 𝒰₁
-  | prod α β, 𝒰₁ =>
-    check env α 𝒰₁ && check (incr <$> (α :: env)) β 𝒰₁
-  | sum α β, 𝒰₁ =>
-    check env α 𝒰₁ && check env β 𝒰₁
-  | eq a a' α, 𝒰₁ =>
-    check env a α && check env a' α && check env α 𝒰₁
+  | α ⇨ β, typ u =>
+    check env α (typ u) && check (incr <$> (α :: env)) β (typ u)
+  | prod α β, typ u =>
+    check env α (typ u) && check env β (α ⇨ 𝒰)
+  | sum α β, typ u =>
+    check env α (typ u) && check env β (typ u)
+  | eq a a' α, typ u =>
+    check env a α && check env a' α && check env α (typ u)
   | t, τ =>
     cumeq t.btype τ
 
-#guard check [] pair.btype 𝒰₁
+#guard check [] pmk.btype 𝒰₁
 
 #guard check [] prod_rec.btype 𝒰₁
 
@@ -314,13 +326,13 @@ def check (env : List Term) : Term → Term → Bool
 
 #guard check [] refl.btype 𝒰₁
 
-#eval eq_rec.btype
-
 #guard check [] eq_rec.btype 𝒰₁
 
 #guard check [] nat_rec.btype 𝒰₁
 
 #guard check [] fls_rec.btype 𝒰₁
+
+#check Sigma.rec
 
 /-- The type checker! -/
 def ch (p : Term × Term) :=
@@ -334,17 +346,17 @@ def a_imp_a := la' ’a (α◆𝒰 ⇨ a◆’α ⇨ ’α) 2
 #guard ch a_imp_a
 
 /-- A → B → A ∧ B -/
-def a_imp_b_imp_ab := la' (ap pair pair.btype [’α, ’β]) (α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ ’β ⇨ prod ’α ’β) 2
+def a_imp_b_imp_ab := la' (ap pmk pmk.btype [’α, la ’β (’α ⇨ 𝒰) 1]) (α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ ’β ⇨ prod ’α (la ’β (’α ⇨ 𝒰) 1)) 2
 
 #guard ch a_imp_b_imp_ab
 
 /-- A → B → B ∧ A -/
-def a_imp_b_imp_ba := la' (ap pair pair.btype [’β, ’α, ’b, ’a]) (α◆𝒰 ⇨ β◆𝒰 ⇨ a◆’α ⇨ b◆’β ⇨ prod ’β ’α) 4
+def a_imp_b_imp_ba := la' (ap pmk pmk.btype [’β, la ’α (’β ⇨ 𝒰) 1, ’b, ’a]) (α◆𝒰 ⇨ β◆𝒰 ⇨ a◆’α ⇨ b◆’β ⇨ prod ’β (la ’α (’β ⇨ 𝒰) 1)) 4
 
 #guard ch a_imp_b_imp_ba
 
 /-- Get first element of product -/
-def fst := la' (ap prod_rec prod_rec.btype [’α, ’β, la ’α (prod ’α ’β ⇨ 𝒰) 1, la ’a (a◆’α ⇨ ’β ⇨ ’α) 2, ’p]) (α◆𝒰 ⇨ β◆𝒰 ⇨ p◆(prod ’α ’β) ⇨ ’α) 3
+def fst := la' (ap prod_rec prod_rec.btype [’α, ’β, la ’α (prod ’α ’β ⇨ 𝒰) 1, la ’a (a◆’α ⇨ ’β ⇨ ’α) 2, ’p]) (α◆𝒰 ⇨ β◆(’α ⇨ 𝒰) ⇨ p◆(prod ’α ’β) ⇨ ’α) 3
 
 #guard ch fst
 
@@ -354,7 +366,7 @@ def snd := la' (ap prod_rec prod_rec.btype [’α, ’β, la ’β (prod ’α �
 #guard ch snd
 
 /-- A ∧ B → B ∧ A -/
-def ab_imp_ba := la' (ap pair pair.btype [’β, ’α, ap snd.1 snd.2 [’α, ’β, ’p], ap fst.1 fst.2 [’α, ’β, ’p]]) (α◆𝒰 ⇨ β◆𝒰 ⇨ p◆(prod ’α ’β) ⇨ prod ’β ’α) 3
+def ab_imp_ba := la' (ap pmk pmk.btype [’β, la ’α (’β ⇨ 𝒰) 1, ap snd.1 snd.2 [’α, ’β, ’p], ap fst.1 fst.2 [’α, ’β, ’p]]) (α◆𝒰 ⇨ β◆𝒰 ⇨ p◆(prod ’α (la ’β (’α ⇨ 𝒰) 1)) ⇨ prod ’β (la ’α (’β ⇨ 𝒰) 1)) 3
 
 #guard ch ab_imp_ba
 
@@ -372,6 +384,16 @@ def a_imp_not_not_a := la' (ap ’f (’α ⇨ ⊥) [’a]) (α◆𝒰 ⇨ a◆�
 def not_not_not_a_imp_not_a := la' (ap ’f (((’α ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) [la (ap ’f (’α ⇨ ⊥) [’a]) (f◆(’α ⇨ ⊥) ⇨ ⊥) 1]) (α◆𝒰 ⇨ f◆(((’α ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) ⇨ a◆’α ⇨ ⊥) 3
 
 #guard ch not_not_not_a_imp_not_a
+
+/-- ∀ a : A, ∃ b : A, b = a -/
+def forall_a_exists_b_eq_a := la' (ap pmk pmk.btype [’α, eq ’a (var 0) ’α, ’a, ap refl refl.btype [’α, ’a]]) (α◆𝒰 ⇨ a◆’α ⇨ prod (b◆’α) (eq ’a ’b ’α)) 2
+
+#guard ch forall_a_exists_b_eq_a
+
+/-- ∃ n : ℕ, n = 0 -/
+def exists_n_eq_zero := (ap pmk pmk.btype [ℕ, la (eq ’n zero ℕ) (n◆ℕ ⇨ 𝒰) 1, zero, ap refl refl.btype [ℕ, zero]], prod ℕ (la (eq ’n zero ℕ) (n◆ℕ ⇨ 𝒰) 1))
+
+#guard ch exists_n_eq_zero
 
 /-- Convenience wrapper around `succ` -/
 def succ' n := ap succ (ℕ ⇨ ℕ) [n]
@@ -416,18 +438,39 @@ def two_plus_two_eq_four := (ap refl refl.btype [ℕ, four], eq (ap add.1 add.2 
 
 #guard ch two_plus_two_eq_four
 
+/-- Rewrite with an equality -/
 def rw := la' (ap eq_rec eq_rec.btype [’α, ’a, la (ap ’p (’α ⇨ 𝒰) [’x]) (x◆’α ⇨ (eq ’a ’x ’α) ⇨ 𝒰) 2]) (α◆𝒰 ⇨ a◆’α ⇨ b◆’α ⇨ p◆(’α ⇨ 𝒰) ⇨ eq ’a ’b ’α ⇨ ap ’p (’α ⇨ 𝒰) [’a] ⇨ ap ’p (’α ⇨ 𝒰) [’b]) 6
 
 #guard ch rw
 
-/-
-TODO
+/-- n + 0 = 0 + n -/
+def add_zero := la' sorry (n◆ℕ ⇨ eq (ap add.1 add.2 [’n, zero]) (ap add.1 add.2 [zero, ’n]) ℕ) 1
 
-n + 0 = 0 + n
+#guard ch n_plus_zero_eq_zero_plus_n
 
-n + m = m + n
+/-- n + m = m + n -/
+def add_comm := la' sorry (n◆ℕ ⇨ m◆ℕ ⇨ eq (ap add.1 add.2 [’n, ’m]) (ap add.1 add.2 [’m, ’n]) ℕ) 2
 
-define mul, exp
+#guard ch add_comm
 
-state fermat
--/
+/-- Multiplication -/
+def mul := la' (ap nat_rec nat_rec.btype [la ℕ (ℕ ⇨ 𝒰) 1, zero, la (ap add.1 add.2 [’n, ’m]) (ℕ ⇨ m◆ℕ ⇨ ℕ) 2]) (n◆ℕ ⇨ ℕ ⇨ ℕ) 1
+
+#guard ch mul
+
+#eval eval (dbify [] <| ap mul.1 mul.2 [zero, two])
+
+/-- Exponentiation -/
+def pow := la' (ap nat_rec nat_rec.btype [la ℕ (ℕ ⇨ 𝒰) 1, one, la (ap mul.1 mul.2 [’n, ’m]) (ℕ ⇨ m◆ℕ ⇨ ℕ) 2]) (n◆ℕ ⇨ ℕ ⇨ ℕ) 1
+
+#guard ch pow
+
+#eval eval (ap pow.1 pow.2 [one, one])
+
+/-- Fermat's last theorem -/
+def fermat := la' sorry (a◆ℕ ⇨ b◆ℕ ⇨ c◆ℕ ⇨ n◆ℕ ⇨ (eq ’a zero ℕ ⇨ ⊥) ⇨ (eq ’b zero ℕ ⇨ ⊥) ⇨ (eq ’c zero ℕ ⇨ ⊥) ⇨ (eq ’n zero ℕ ⇨ ⊥) ⇨ (eq ’n one ℕ ⇨ ⊥) ⇨ (eq ’n two ℕ ⇨ ⊥) ⇨ eq (ap add.1 add.2 [ap pow.1 pow.2 [’a, ’n], ap pow.1 pow.2 [’b, ’n]]) (ap pow.1 pow.2 [’c, ’n]) ℕ ⇨ ⊥) 10
+
+#guard ch fermat
+
+
+-- TODO: if statements using sum type of units and rec, factorial
