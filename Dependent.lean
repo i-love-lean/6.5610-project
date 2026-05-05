@@ -1,4 +1,4 @@
--- μLean, a very simple proof assistant with dependent types and polymorphism!
+-- μLean, a very simple proof assistant based on the calculus of constructions!
 
 inductive Term
   -- The basic stuff
@@ -11,6 +11,8 @@ inductive Term
   -- Types
   /-- Type of types -/
   | typ
+  /-- Type of type of types -/
+  | typ1
   /-- Dependent function type -/
   | fn (α β : Term)
   -- Inductive types
@@ -31,7 +33,7 @@ inductive Term
   /-- Equality type -/
   | eq (a a' α : Term)
   /-- Constructor for equality -/
-  | rfl
+  | refl
   /-- Recursor for equality -/
   | eq_rec
   /-- Natural number type -/
@@ -59,177 +61,208 @@ def Term.toString : Term → String
   | lam b β => s!"(list 1n {toString b} {toString β})"
   | app f φ a α => s!"(list 2n {toString f} {toString φ} {toString a} {toString α})"
   | typ => "'(3n)"
-  | fn α β => s!"(list 4n {toString α} {toString β})"
-  | prod α β => s!"(list 5n {toString α} {toString β})"
-  | pair => "'(6n)"
-  | prod_rec => "'(7n)"
-  | sum α β => s!"(list 8n {toString α} {toString β})"
-  | inl => "'(9n)"
-  | inr => "'(10n)"
-  | sum_rec => "'(11n)"
-  | eq a a' α => s!"(list 12n {toString a} {toString a'} {toString α})"
-  | rfl => "'(13n)"
-  | eq_rec => "'(14n)"
-  | nat => "'(15n)"
-  | zero => "'(16n)"
-  | succ => "'(17n)"
-  | nat_rec => "'(18n)"
-  | fls => "'(19n)"
-  | fls_rec => "'(20n)"
-  | _ => "bad"
+  | typ1 => "'(4n)"
+  | fn α β => s!"(list 5n {toString α} {toString β})"
+  | prod α β => s!"(list 6n {toString α} {toString β})"
+  | pair => "'(7n)"
+  | prod_rec => "'(8n)"
+  | sum α β => s!"(list 9n {toString α} {toString β})"
+  | inl => "'(10n)"
+  | inr => "'(11n)"
+  | sum_rec => "'(12n)"
+  | eq a a' α => s!"(list 13n {toString a} {toString a'} {toString α})"
+  | refl => "'(14n)"
+  | eq_rec => "'(15n)"
+  | nat => "'(16n)"
+  | zero => "'(17n)"
+  | succ => "'(18n)"
+  | nat_rec => "'(19n)"
+  | fls => "'(20n)"
+  | fls_rec => "'(21n)"
+  | _ => panic "You should call dbify before using toString!"
 
 -- instance : ToString Term := ⟨Term.toString⟩
 
 -- instance : ToString (Term × Term) := ⟨fun p ↦ s!"(cons {p.1} {p.2})"⟩
 
 -- `infixr` doesn't work at compile time or something
-notation α " ⇨ " β => fn α β -- \he
+notation α " ⇨ " β => fn α β -- \hey
 notation "𝒰" => typ -- \McU
-notation "⊥" => fls -- \bo
+notation "𝒰₁" => typ1 -- \McU\1
 notation "ℕ" => nat -- \N
+notation "⊥" => fls -- \bo
 -- `max` fixes some precedence issues when parsing
-syntax:max "’" ident : term -- \rq
-macro_rules
-  | `(’$s:ident) => `(name $(Lean.Syntax.mkStrLit s.getId.toString))
 syntax ident "◆" term:max : term -- \di
 macro_rules
   | `($s:ident ◆ $t) => `(new $(Lean.Syntax.mkStrLit s.getId.toString) $t)
+syntax:max "’" ident : term -- \rq
+macro_rules
+  | `(’$s:ident) => `(name $(Lean.Syntax.mkStrLit s.getId.toString))
+
+/-- Helper function for recursing over terms -/
+def term_rec (s : α) (on_dep : α → α) (on_var : α → Nat → Term) :=
+  let rec term_rec' s
+  | var x =>
+    on_var s x
+  | lam b β =>
+    lam (term_rec' (on_dep s) b) (term_rec' (on_dep s) β)
+  | app f φ a α =>
+    app (term_rec' s f) (term_rec' s φ) (term_rec' s a) (term_rec' s α)
+  | α ⇨ β =>
+    term_rec' s α ⇨ term_rec' (on_dep s) β
+  | prod α β =>
+    prod (term_rec' s α) (term_rec' (on_dep s) β)
+  | sum α β =>
+    sum (term_rec' s α) (term_rec' s β)
+  | eq a a' α =>
+    eq (term_rec' s a) (term_rec' s a') (term_rec' s α)
+  | t =>
+    t
+  term_rec' s
 
 /-- Increment free variables by 1 -/
-def incr (d : Nat) : Term → Term
-  | var x =>
-    var (if d ≤ x then x + 1 else x)
-  | lam b β =>
-    lam (incr (d + 1) b) (incr (d + 1) β)
-  | app f φ a α =>
-    app (incr d f) (incr d φ) (incr d a) (incr d α)
-  | α ⇨ β =>
-    incr d α ⇨ incr (d + 1) β
-  | prod α β =>
-    prod (incr d α) (incr (d + 1) β)
-  | sum α β =>
-    sum (incr d α) (incr d β)
-  | eq a a' α =>
-    eq (incr d a) (incr d a') (incr d α)
-  | t => t
+def incr :=
+  term_rec 0 (· + 1) fun d x ↦ var (if d ≤ x then x + 1 else x)
 
-/-- Substitute `s` at index `n` in a term -/
-def sub (n : Nat) (s : Term) : Term → Term
-  | var x =>
-    if x == n then s else var (if n < x then x - 1 else x)
-  | lam b β =>
-    lam (sub (n + 1) (incr 0 s) b) (sub (n + 1) (incr 0 s) β)
-  | app f φ a α =>
-    app (sub n s f) (sub n s φ) (sub n s a) (sub n s α)
-  | α ⇨ β =>
-    sub n s α ⇨ sub (n + 1) (incr 0 s) β
-  | prod α β =>
-    prod (sub n s α) (sub (n + 1) (incr 0 s) β)
-  | sum α β =>
-    sum (sub n s α) (sub n s β)
-  | eq a a' α =>
-    eq (sub n s a) (sub n s a') (sub n s α)
-  | t => t
+/-- Substitute `t'` at index 0 in a term -/
+def sub (t' : Term) :=
+  term_rec (0, t') (fun (d, t') ↦ (d + 1, incr t')) fun (d, t') x ↦ if x == d then t' else var (if d < x then x - 1 else x)
 
 /-- Convenience wrapper around `lam` with currying -/
 def la (b : Term) : Term → Nat → Term
-  | .new s _ ⇨ β, n + 1 => lam (.new s (la b β n)) (.new s β)
-  | _, _ => b
+  | α ⇨ β, n + 1 =>
+    let s :=
+      match α with
+      | new s _ => s
+      | _ => ""
+    lam (new s (la b β n)) (new s β)
+  | _, _ =>
+    b
 
 /-- Bundle the type with `la` -/
 def la' b β n := (la b β n, β)
 
+/-- Substitute `t'` for variable name `s` in a term -/
+-- TODO: Is this necessary?
+def sub' (s : String) (t' : Term) : Term → Term
+  | name s' =>
+    if s' == s then t' else name s'
+  | new s' t =>
+    if s' == s then new s' t else new s' (sub' s t' t)
+  | lam b β =>
+    lam (sub' s t' b) (sub' s t' β)
+  | app f φ a α =>
+    app (sub' s t' f) (sub' s t' φ) (sub' s t' a) (sub' s t' α)
+  | α ⇨ β =>
+    sub' s t' α ⇨ sub' s t' β
+  | prod α β =>
+    prod (sub' s t' α) (sub' s t' β)
+  | sum α β =>
+    sum (sub' s t' α) (sub' s t' β)
+  | eq a a' α =>
+    eq (sub' s t' a) (sub' s t' a') (sub' s t' α)
+  | t =>
+    t
+
 /-- Convenience wrapper around `app` with currying -/
 def ap (f : Term) : Term → List Term → Term
-  -- Need to eval both these guys?
-  | α ⇨ β, x :: xs => ap (app f (α ⇨ β) x α) (sub 0 x β) xs
-  | _, _ => f
+  | α ⇨ β, x :: xs =>
+    let β' :=
+      match α with
+      | new s _ => sub' s x β
+      | _ => sub x β
+    -- TODO: Need to eval both these guys?
+    ap (app f (α ⇨ β) x α) β' xs
+  | _, _ =>
+    f
 
 /-- Convert from variable names to de Bruijn indices -/
-def debruijn (names : List String) : Term → Term
+def dbify (names : List String) : Term → Term
   | name s =>
-    var (names.idxOf s)
+    var (names.idxOf? s).get! -- Panicking is usually bad but helpful here for debugging
   | new s t =>
-    debruijn (s :: names) t
+    dbify (s :: names) t
   | lam b β =>
-    lam (debruijn names b) (debruijn names β)
+    lam (dbify names b) (dbify names β)
   | app f φ a α =>
-    app (debruijn names f) (debruijn names φ) (debruijn names a) (debruijn names α)
+    app (dbify names f) (dbify names φ) (dbify names a) (dbify names α)
   | new s α ⇨ β =>
-    debruijn names α ⇨ debruijn (s :: names) β
+    dbify names α ⇨ dbify (s :: names) β
   | α ⇨ β =>
-    debruijn names α ⇨ debruijn ("" :: names) β
+    dbify names α ⇨ dbify ("" :: names) β
   | prod (new s α) β =>
-    prod (debruijn names α) (debruijn (s :: names) β)
+    prod (dbify names α) (dbify (s :: names) β)
   | prod α β =>
-    prod (debruijn names α) (debruijn ("" :: names) β)
+    prod (dbify names α) (dbify ("" :: names) β)
   | sum α β =>
-    sum (debruijn names α) (debruijn names β)
+    sum (dbify names α) (dbify names β)
   | eq a a' α =>
-    eq (debruijn names a) (debruijn names a') (debruijn names α)
-  | t => t
-
-#guard debruijn [] (α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ ’β ⇨ prod ’α ’β) == 𝒰 ⇨ 𝒰 ⇨ var 1 ⇨ var 1 ⇨ prod (var 3) (var 3)
+    eq (dbify names a) (dbify names a') (dbify names α)
+  | t =>
+    t
 
 /-- Get type of built-in functions -/
 def Term.btype (t : Term) :=
-  match t with
-  | pair =>
-    α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ ’β ⇨ prod ’α ’β
-  | prod_rec =>
-    let μ := prod ’α ’β ⇨ 𝒰
-    α◆𝒰 ⇨ β◆𝒰 ⇨ m◆μ ⇨ (a◆’α ⇨ b◆’β ⇨ ap ’m μ [ap pair pair.btype [’a, ’b]]) ⇨ p◆(prod ’α ’β) ⇨ ap ’m μ [’p]
-  | inl =>
-    α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ sum ’α ’β
-  | inr =>
-    α◆𝒰 ⇨ β◆𝒰 ⇨ ’β ⇨ sum ’α ’β
-  | sum_rec =>
-    let μ := sum ’α ’β ⇨ 𝒰
-    α◆𝒰 ⇨ β◆𝒰 ⇨ m◆μ ⇨ (a◆’α ⇨ ap ’m μ [ap inl inl.btype [’a]]) ⇨ (b◆’β ⇨ ap ’m μ [ap inr inr.btype [’b]]) ⇨ s◆(sum ’α ’β) ⇨ ap ’m μ [’s]
-  | rfl =>
-    α◆𝒰 ⇨ a◆’α ⇨ eq ’a ’a ’α
-  | eq_rec =>
-    let μ := x◆’α ⇨ eq ’a ’x ’α ⇨ 𝒰
-    α◆𝒰 ⇨ a◆’α ⇨ m◆μ ⇨ ap ’m μ [’a, ap rfl rfl.btype [’α, ’a]] ⇨ b◆’α ⇨ h◆(eq ’a ’b ’α) ⇨ ap ’m μ [’b, ’h]
-  | zero =>
-    ℕ
-  | succ =>
-    ℕ ⇨ ℕ
-  | nat_rec =>
-    let μ := ℕ ⇨ 𝒰
-    m◆μ ⇨ z◆(ap ’m μ [zero]) ⇨ s◆(n◆ℕ ⇨ ap ’m μ [’n] ⇨ ap ’m μ [ap succ succ.btype [’n]]) ⇨ t◆ℕ ⇨ ap ’m μ [’t]
-  | fls_rec =>
-    m◆(fls ⇨ 𝒰) ⇨ f◆fls ⇨ ap ’m (fls ⇨ 𝒰) [’f]
-  | _ =>
-    name "bad"
+  dbify [] <|
+    match t with
+    | 𝒰 =>
+      𝒰₁
+    | pair =>
+      α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ ’β ⇨ prod ’α ’β
+    | prod_rec =>
+      let μ := prod ’α ’β ⇨ 𝒰
+      α◆𝒰 ⇨ β◆𝒰 ⇨ m◆μ ⇨ (a◆’α ⇨ b◆’β ⇨ ap ’m μ [ap pair pair.btype [’α, ’β, ’a, ’b]]) ⇨ p◆(prod ’α ’β) ⇨ ap ’m μ [’p]
+    | inl =>
+      α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ sum ’α ’β
+    | inr =>
+      α◆𝒰 ⇨ β◆𝒰 ⇨ ’β ⇨ sum ’α ’β
+    | sum_rec =>
+      let μ := sum ’α ’β ⇨ 𝒰
+      α◆𝒰 ⇨ β◆𝒰 ⇨ m◆μ ⇨ (a◆’α ⇨ ap ’m μ [ap inl inl.btype [’α, ’β, ’a]]) ⇨ (b◆’β ⇨ ap ’m μ [ap inr inr.btype [’α, ’β, ’b]]) ⇨ s◆(sum ’α ’β) ⇨ ap ’m μ [’s]
+    | refl =>
+      α◆𝒰 ⇨ a◆’α ⇨ eq ’a ’a ’α
+    | eq_rec =>
+      let μ := x◆’α ⇨ eq ’a ’x ’α ⇨ 𝒰
+      α◆𝒰 ⇨ a◆’α ⇨ m◆μ ⇨ ap ’m μ [’a, ap refl refl.btype [’α, ’a]] ⇨ b◆’α ⇨ h◆(eq ’a ’b ’α) ⇨ ap ’m μ [’b, ’h]
+    | ℕ =>
+      𝒰
+    | zero =>
+      ℕ
+    | succ =>
+      ℕ ⇨ ℕ
+    | nat_rec =>
+      let μ := ℕ ⇨ 𝒰
+      m◆μ ⇨ z◆(ap ’m μ [zero]) ⇨ s◆(n◆ℕ ⇨ ap ’m μ [’n] ⇨ ap ’m μ [ap succ succ.btype [’n]]) ⇨ t◆ℕ ⇨ ap ’m μ [’t]
+    | ⊥ =>
+      𝒰
+    | fls_rec =>
+      m◆(⊥ ⇨ 𝒰) ⇨ f◆⊥ ⇨ ap ’m (⊥ ⇨ 𝒰) [’f]
+    | _ =>
+      t
 termination_by
   match t with
   | prod_rec | sum_rec | eq_rec | nat_rec => 1
   | _ => 0
 
-/-- `t` should be well-typed or bad things will happen! -/
-partial def eval (t : Term) : Term :=
-  match t with
+/-- The input should be well-typed or bad things will happen! -/
+partial def eval : Term → Term
   | lam b β =>
     lam (eval b) (eval β)
-  -- | app (app (app .fst _ _ _) _ _ _) _ (app (app (app (app .and _ _ _) _ _ _) _ a _) _ _ _) _ =>
-    -- eval a
-  -- | app (app (app .snd _ _ _) _ _ _) _ (app (app (app (app .and _ _ _) _ _ _) _ _ _) _ b _) _ =>
-    -- eval b
-  | app (app (app (app .nat_rec _ m _) _ z _) _ f φ) _ n _ =>
-    match n with
-    | zero => eval z
-    -- TODO replace ν with the type of .nat_rec
-    | app succ _ n _ => eval (ap f φ [n, ap .nat_rec Term.nat_rec.btype [m, z, f, n]])
-    | _ => t
-  -- eq_rec seems useless?
-  -- | app (app (app (app (app (app eq_rec ε α _) _ a _) _ m _) _ r _) _ a' _) _ h _ =>
   | app f φ a α =>
-    -- TODO handle dependent funcs
-    let a' := eval a
-    match eval f with
-    | lam b _ => eval (sub 0 (incr 0 a') b)
-    | x => app x φ a' α -- Probably want to eval again here
+    match eval f, eval a with
+    | lam b _, a' =>
+      eval (sub (incr a') b)
+    | app (app (app (app prod_rec _ _ _) _ _ _) _ _ _) _ g γ, app (app (app (app pair _ _ _) _ _ _) _ a _) _ b _ =>
+      eval (ap g (eval γ) [a, b])
+    | app (app (app (app (app sum_rec _ _ _) _ _ _) _ _ _) _ g γ) _ _ _, app (app (app inl _ _ _) _ _ _) _ a _ =>
+      eval (ap g (eval γ) [a])
+    | app (app (app (app (app sum_rec _ _ _) _ _ _) _ _ _) _ _ _) _ g γ, app (app (app inr _ _ _) _ _ _) _ b _ =>
+      eval (ap g (eval γ) [b])
+    | app (app (app nat_rec _ _ _) _ z _) _ _ _, zero =>
+      eval z
+    | app (app (app nat_rec _ m _) _ z _) _ g γ, app succ _ n _ =>
+      eval (ap g (eval γ) [n, ap nat_rec nat_rec.btype [m, z, g, n]])
+    | x, a' => app x (eval φ) a' (eval α)
   | α ⇨ β =>
     eval α ⇨ eval β
   | prod α β =>
@@ -241,150 +274,160 @@ partial def eval (t : Term) : Term :=
   | t =>
     t
 
--- /-- -/
--- def defeq (env : List Term) a a' α :=
---   check env a α && check env a' α' && eval env a α == eval env a' α'
+/-- Definitional equality -/
+-- TODO: is this eval really needed???
+def defeq a a' := eval a == eval a'
 
--- TODO: A lot of the `==`s here should use defeq
-/-- Janky type checker -/
+/-- Definitional equality, where cumulative universes are equal -/
+-- TODO: is this eval really needed???
+def cumeq a a' :=
+  let a'' := eval a
+  (a'' == 𝒰 && a' == 𝒰₁) || a'' == eval a'
+
+/-- Only pass in trusted input for the second term! -/
 def check (env : List Term) : Term → Term → Bool
   | var x, α =>
-    if _ : x < env.length then env[x] == α else false
+    if _ : x < env.length then cumeq env[x] α else false
   | lam b β, α ⇨ β' =>
-    β' == β && check (incr 0 <$> (α :: env)) b β
-    -- β' == β && (β == 𝒰 || check (incr 0 <$> (α :: env)) β 𝒰) && check (incr 0 <$> (α :: env)) b β
+    defeq β β' && check (incr <$> (α :: env)) b β
   | app f (α ⇨ β) a α', β' =>
-    α' == α && β' == sub 0 a β && check env f (α ⇨ β) && check env a α
-  | .nat, 𝒰
-  | ⊥, 𝒰 =>
-    true
-  | α ⇨ β, 𝒰 =>
-    check env α 𝒰 && check (incr 0 <$> (α :: env)) β 𝒰
-  | prod α β, 𝒰
-  | sum α β, 𝒰 =>
-    check env α 𝒰 && check env β 𝒰
-  | eq a a' α, 𝒰 =>
-    check env a α && check env a' α && check env α 𝒰
+    defeq α α' && cumeq (eval (sub a β)) β' && check env f (α ⇨ β) && check env a α
+  | α ⇨ β, 𝒰₁
+  | prod α β, 𝒰₁ =>
+    check env α 𝒰₁ && check (incr <$> (α :: env)) β 𝒰₁
+  | sum α β, 𝒰₁ =>
+    check env α 𝒰₁ && check env β 𝒰₁
+  | eq a a' α, 𝒰₁ =>
+    check env a α && check env a' α && check env α 𝒰₁
   | t, τ =>
-    debruijn [] t.btype == τ
+    cumeq t.btype τ
 
-def check' (t : Term × Term) :=
-  check [] (debruijn [] t.1) (debruijn [] t.2)
+#guard check [] pair.btype 𝒰₁
+
+#guard check [] prod_rec.btype 𝒰₁
+
+#guard check [] inl.btype 𝒰₁
+
+#guard check [] inr.btype 𝒰₁
+
+#guard check [] sum_rec.btype 𝒰₁
+
+#guard check [] refl.btype 𝒰₁
+
+#eval eq_rec.btype
+
+#guard check [] eq_rec.btype 𝒰₁
+
+#guard check [] nat_rec.btype 𝒰₁
+
+#guard check [] fls_rec.btype 𝒰₁
+
+/-- The type checker! -/
+def ch (p : Term × Term) :=
+  let t := dbify [] p.1
+  let τ := dbify [] p.2
+  check [] τ 𝒰₁ && check [] t τ
 
 /-- A → A -/
 def a_imp_a := la' ’a (α◆𝒰 ⇨ a◆’α ⇨ ’α) 2
 
-#guard check' a_imp_a
+#guard ch a_imp_a
 
 /-- A → B → A ∧ B -/
 def a_imp_b_imp_ab := la' (ap pair pair.btype [’α, ’β]) (α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ ’β ⇨ prod ’α ’β) 2
 
-#guard check' a_imp_b_imp_ab
+#guard ch a_imp_b_imp_ab
 
 /-- A → B → B ∧ A -/
 def a_imp_b_imp_ba := la' (ap pair pair.btype [’β, ’α, ’b, ’a]) (α◆𝒰 ⇨ β◆𝒰 ⇨ a◆’α ⇨ b◆’β ⇨ prod ’β ’α) 4
 
-#guard check' a_imp_b_imp_ba
+#guard ch a_imp_b_imp_ba
 
 /-- Get first element of product -/
-def fst α β p := ap prod_rec prod_rec.btype [α, β, la α (prod α β ⇨ 𝒰) 1, la ’a (new "a" α ⇨ β ⇨ α) 2, p]
+def fst := la' (ap prod_rec prod_rec.btype [’α, ’β, la ’α (prod ’α ’β ⇨ 𝒰) 1, la ’a (a◆’α ⇨ ’β ⇨ ’α) 2, ’p]) (α◆𝒰 ⇨ β◆𝒰 ⇨ p◆(prod ’α ’β) ⇨ ’α) 3
+
+#guard ch fst
 
 /-- Get second element of product -/
-def snd α β p := ap prod_rec prod_rec.btype [α, β, la β (prod α β ⇨ 𝒰) 1, la ’b (α ⇨ new "b" β ⇨ β) 2, p]
+def snd := la' (ap prod_rec prod_rec.btype [’α, ’β, la ’β (prod ’α ’β ⇨ 𝒰) 1, la ’b (’α ⇨ b◆’β ⇨ ’β) 2, ’p]) (α◆𝒰 ⇨ β◆𝒰 ⇨ p◆(prod ’α ’β) ⇨ ’β) 3
+
+#guard ch snd
 
 /-- A ∧ B → B ∧ A -/
-def ab_imp_ba := la' (and (snd ₸0 ₸1 ’0) ₸1 (fst ₸0 ₸1 ’0) ₸0) (prod ₸0 ₸1 ⇨ prod ₸1 ₸0) 1
+def ab_imp_ba := la' (ap pair pair.btype [’β, ’α, ap snd.1 snd.2 [’α, ’β, ’p], ap fst.1 fst.2 [’α, ’β, ’p]]) (α◆𝒰 ⇨ β◆𝒰 ⇨ p◆(prod ’α ’β) ⇨ prod ’β ’α) 3
 
-#guard check [] ab_imp_ba.1 ab_imp_ba.2
-
-/-- Convenience wrapper around `.inl` -/
-def inl α β a := app .inl (𝒰 ⇨ 𝒰 ⇨ ’1 ⇨ sum ’2 ’1) [α, β, a]
+#guard ch ab_imp_ba
 
 /-- ¬(A ∨ B) → ¬A -/
-def not_ab_imp_not_a := la' (app ’1 (sum ₸0 ₸1 ⇨ ⊥) [inl ₸0 ₸1 ’0]) ((sum ₸0 ₸1 ⇨ ⊥) ⇨ ₸0 ⇨ ⊥) 2
+def not_ab_imp_not_a := la' (ap ’f (sum ’α ’β ⇨ ⊥) [ap inl inl.btype [’α, ’β, ’a]]) (α◆𝒰 ⇨ β◆𝒰 ⇨ f◆(sum ’α ’β ⇨ ⊥) ⇨ a◆’α ⇨ ⊥) 4
 
-#guard check [] not_ab_imp_not_a.1 not_ab_imp_not_a.2
+#guard ch not_ab_imp_not_a
 
 /-- A → ¬¬A -/
-def a_imp_not_not_a := la' (app ’0 (₸0 ⇨ ⊥) [’1]) (₸0 ⇨ (₸0 ⇨ ⊥) ⇨ ⊥) 2
+def a_imp_not_not_a := la' (ap ’f (’α ⇨ ⊥) [’a]) (α◆𝒰 ⇨ a◆’α ⇨ f◆(’α ⇨ ⊥) ⇨ ⊥) 3
 
-#guard check [] a_imp_not_not_a.1 a_imp_not_not_a.2
+#guard ch a_imp_not_not_a
 
 /-- ¬¬¬A → ¬A -/
-def not_not_not_a_imp_not_a := la' (app ’1 (((₸0 ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) [app a_imp_not_not_a.1 a_imp_not_not_a.2 [’0]]) ((((₸0 ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) ⇨ ₸0 ⇨ ⊥) 2
+def not_not_not_a_imp_not_a := la' (ap ’f (((’α ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) [la (ap ’f (’α ⇨ ⊥) [’a]) (f◆(’α ⇨ ⊥) ⇨ ⊥) 1]) (α◆𝒰 ⇨ f◆(((’α ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) ⇨ a◆’α ⇨ ⊥) 3
 
-#guard check [] not_not_not_a_imp_not_a.1 not_not_not_a_imp_not_a.2
+#guard ch not_not_not_a_imp_not_a
 
-/-- Alternative proof of ¬¬¬A → ¬A -/
-def not_not_not_a_imp_not_a' := la' (app ’1 (((₸0 ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) [lam (app ’0 (₸0 ⇨ ⊥) [’1]) ⊥]) ((((₸0 ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) ⇨ ₸0 ⇨ ⊥) 2
+/-- Convenience wrapper around `succ` -/
+def succ' n := ap succ (ℕ ⇨ ℕ) [n]
 
-#guard check [] not_not_not_a_imp_not_a'.1 not_not_not_a_imp_not_a'.2
+/-- 1 exists (yeah I know this is not super exciting) -/
+def one := succ' zero
 
-/-- Convenience wrapper around `.rfl` -/
-def rfl' a α := app .rfl (𝒰 ⇨ ’0 ⇨ eq ’0 ’0 ’1) [α, a]
+#guard ch (one, ℕ)
 
-/-- ∀ a : A, a = a -/
-def a_eq_a := la' (rfl' ’0 ₸0) (₸0 ⇨ eq ’0 ’0 ₸0) 1
+/-- 2 exists -/
+def two := succ' one
 
-#guard check [] a_eq_a.1 a_eq_a.2
-
-/-- Convenience wrapper around `.succ` -/
-def succ n := app .succ (ℕ ⇨ ℕ) [n]
-
--- /-- 2 exists (yeah I know this is not super exciting) -/
-def two := (succ (succ zero), ℕ)
-
-#guard check [] two.1 two.2
+#guard ch (two, ℕ)
 
 /-- 4 exists -/
-def four := (succ (succ two.1), ℕ)
+def four := succ' (succ' two)
 
-#guard check [] four.1 four.2
-
-#check Nat.rec
-
-/-- `.nat_rec` where the motive always returns `ℕ` -/
-def nat_rec_nat z f := Termapp (app (app .nat_rec ((ℕ ⇨ 𝒰) ⇨ app ’0 (ℕ ⇨ 𝒰) zero ℕ ⇨ (ℕ ⇨ app ’2 (ℕ ⇨ 𝒰) ’0 ℕ ⇨ app ’3 (ℕ ⇨ 𝒰) (app .succ (ℕ ⇨ ℕ) ’1 ℕ) ℕ) ⇨ ℕ ⇨ app ’0 ℕ ’3 (ℕ ⇨ 𝒰)) (lam ℕ 𝒰) (ℕ ⇨ 𝒰)) (ℕ ⇨ (ℕ ⇨ ℕ ⇨ ℕ) ⇨ ℕ ⇨ ℕ) z ℕ) ((ℕ ⇨ ℕ ⇨ ℕ) ⇨ ℕ ⇨ ℕ) f (ℕ ⇨ ℕ ⇨ ℕ)
-
-#eval nat_rec_nat ₸0 ₸1
-
-def nat_rec_nat' z f := app .nat_rec ((ℕ ⇨ 𝒰) ⇨ app ’0 (ℕ ⇨ 𝒰) zero ℕ ⇨ (ℕ ⇨ app ’2 (ℕ ⇨ 𝒰) ’0 ℕ ⇨ app ’3 (ℕ ⇨ 𝒰) (app .succ (ℕ ⇨ ℕ) ’1 ℕ) ℕ) ⇨ ℕ ⇨ app ’0 ℕ ’3 (ℕ ⇨ 𝒰)) [lam ℕ 𝒰, z, f]
-
-#eval nat_rec_nat' ₸0 ₸1
-
-#check Nat.rec
+#guard ch (four, ℕ)
 
 /-- Addition -/
-def add := la' (nat_rec_nat ’0 (lam (succ ’0) (ℕ ⇨ ℕ) 1)) (ℕ ⇨ ℕ ⇨ ℕ) 1
+def add := la' (ap nat_rec nat_rec.btype [la ℕ (ℕ ⇨ 𝒰) 1, ’n, la (succ' ’m) (ℕ ⇨ m◆ℕ ⇨ ℕ) 2]) (n◆ℕ ⇨ ℕ ⇨ ℕ) 1
 
-#guard check [] add.1 add.2
+#guard ch add
 
-def zero_plus_zero := app add.1 add.2 [zero, zero]
+/-- 0 + 0 = 0 -/
+def zero_plus_zero_eq_zero := (ap refl refl.btype [ℕ, zero], eq (ap add.1 add.2 [zero, zero]) zero ℕ)
 
-#eval eval (eval zero_plus_zero)
+#guard ch zero_plus_zero_eq_zero
 
-def zero_plus_one := app add.1 add.2 [zero, succ zero]
+/-- 0 + 1 = 0 -/
+def zero_plus_one_eq_one := (ap refl refl.btype [ℕ, one], eq (ap add.1 add.2 [zero, one]) one ℕ)
 
-#eval eval (eval zero_plus_one)
+#guard ch zero_plus_one_eq_one
 
--- example : eval zero_plus_zero.1 = zero := by
---   unfold zero_plus_zero add
---   simp
---   unfold nat_rec_nat
+/-- 2 + 0 = 2 -/
+def two_plus_zero_eq_two := (ap refl refl.btype [ℕ, two], eq (ap add.1 add.2 [two, zero]) two ℕ)
 
-def two_plus_two := app add.1 add.2 [two.1, two.1]
+#guard ch two_plus_zero_eq_two
 
-#eval eval (eval two_plus_two) == four.1
+/-- 2 + 2 = 4 -/
+def two_plus_two_eq_four := (ap refl refl.btype [ℕ, four], eq (ap add.1 add.2 [two, two]) four ℕ)
 
+#guard ch two_plus_two_eq_four
 
-def eq_rec_type := 𝒰 ⇨ ’0 ⇨ (’1 ⇨ eq ’1 ’0 ’2 ⇨ 𝒰) ⇨ app ’0 (’2 ⇨ eq ’2 ’0 ’3 ⇨ 𝒰) [’1, app .rfl (𝒰 ⇨ ’0 ⇨ eq ’0 ’0 ’1) [’2, ’2]] ⇨ ’3 ⇨ eq ’3 ’0 ’4 ⇨ app ’3 (’5 ⇨ eq ’5 ’0 ’6 ⇨ 𝒰) [’1, ’0]
+def rw := la' (ap eq_rec eq_rec.btype [’α, ’a, la (ap ’p (’α ⇨ 𝒰) [’x]) (x◆’α ⇨ (eq ’a ’x ’α) ⇨ 𝒰) 2]) (α◆𝒰 ⇨ a◆’α ⇨ b◆’α ⇨ p◆(’α ⇨ 𝒰) ⇨ eq ’a ’b ’α ⇨ ap ’p (’α ⇨ 𝒰) [’a] ⇨ ap ’p (’α ⇨ 𝒰) [’b]) 6
 
-def rw := lam (app eq_rec eq_rec_type [’5, ’4, lam (app ’5 (’7 ⇨ 𝒰) [’1]) (’5 ⇨ (eq ’5 ’0 ’6) ⇨ 𝒰) 2]) (𝒰 ⇨ ’0 ⇨ ’1 ⇨ (’2 ⇨ 𝒰) ⇨ eq ’2 ’1 ’3 ⇨ app ’1 (’4 ⇨ 𝒰) [’3] ⇨ app ’2 (’5 ⇨ 𝒰) [’3]) 6
+#guard ch rw
 
--- #guard check [] two_plus_two.1 two_plus_two.2
+/-
+TODO
 
--- /-- 2 + 2 = 4 -/
--- def two_plus_two_eq_four := (Term.fls, Termeq two_plus_two.1 four.1 ℕ)
+n + 0 = 0 + n
 
--- #guard check [] two_plus_two_eq_four.1 two_plus_two_eq_four.2
--- -/
+n + m = m + n
+
+define mul, exp
+
+state fermat
+-/
