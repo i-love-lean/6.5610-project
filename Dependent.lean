@@ -1,13 +1,15 @@
 /-
 # μLean
 
-A very simple proof assistant based on the calculus of constructions with cumulative universes and a few inductive types!
+A very simple proof assistant based on the calculus of constructions with a few inductive types!
+
+μLean is largely based on Lean (obviously) but without general inductive types. Also, unlike Lean, μLean only has two cumulative universes, since stuff above `Type 1` is rarely used in practice anyways. To avoid paradoxes, `Type 1` in μLean does not have a type. Propositions in μLean live in `Type` instead of a dedicated `Prop` universe, which also avoids a lot of Lean's `Prop` weirdness. Lastly, μLean does not have the law of excluded middle.
 
 ## Basic definitions
 -/
 
 inductive Term
-  -- The basic stuff
+  -- Lambda calculus stuff
   /-- Variable with de Bruijn index -/
   | var (x : Nat)
   /-- Lambda -/
@@ -50,49 +52,21 @@ inductive Term
   | nat_rec
   /-- Unit type -/
   | unit
-  /-- Constructor for unit -/
+  /-- Constructor for unit (no recursor because it's silly) -/
   | intro
   /-- False (empty type) -/
   | fls
   /-- Recursor for false -/
   | fls_rec
+  -- Special stuff for handling variable names
   /-- New named variable -/
   | new (s : String) (t : Term)
-  /-- Use of named variable -/
+  /-- Using named variable -/
   | name (s : String)
+-- These let us compare terms
 deriving BEq, ReflBEq, LawfulBEq
 
 open Term
-
-def Term.toString : Term → String
-  | var x => s!"(list 0n {x})"
-  | lam b β => s!"(list 1n {toString b} {toString β})"
-  | app f φ a α => s!"(list 2n {toString f} {toString φ} {toString a} {toString α})"
-  | typ u => s!"(list 3n {u})"
-  | fn α β => s!"(list 4n {toString α} {toString β})"
-  | prod α β => s!"(list 5n {toString α} {toString β})"
-  | pmk => "'(6n)"
-  | prod_rec => "'(7n)"
-  | sum α β => s!"(list 8n {toString α} {toString β})"
-  | inl => "'(9n)"
-  | inr => "'(10n)"
-  | sum_rec => "'(11n)"
-  | eq a a' α => s!"(list 12n {toString a} {toString a'} {toString α})"
-  | refl => "'(13n)"
-  | eq_rec => "'(14n)"
-  | nat => "'(15n)"
-  | zero => "'(16n)"
-  | succ => "'(17n)"
-  | nat_rec => "'(18n)"
-  | unit => "'(19n)"
-  | intro => "'(20n)"
-  | fls => "'(21n)"
-  | fls_rec => "'(22n)"
-  | _ => panic "You should call dbify before using toString!"
-
--- instance : ToString Term := ⟨Term.toString⟩
-
--- instance : ToString (Term × Term) := ⟨fun p ↦ s!"(cons {p.1} {p.2})"⟩
 
 /-
 ## De Bruijn index manipulation
@@ -129,9 +103,11 @@ def sub (t' : Term) :=
 
 /-
 ## Syntactic sugar yay
+
+μLean satisfies the de Bruijn criterion, which means that we use Lean as a metalanguage and write proofs in a high-level vernacular that gets desugared down to a low-level AST for the type checker. This keeps the type checker itself simple.
 -/
 
--- `infixr` doesn't work at compile time or something
+-- `infixr` doesn't work at compile time or something oof
 notation α " ⇨ " β => fn α β -- \hey
 notation "𝒰" => typ 0 -- \McU
 notation "𝒰₁" => typ 1 -- \McU\1
@@ -156,10 +132,10 @@ def la (b : Term) : Term → Nat → Term
   | _, _ =>
     b
 
-/-- Bundle the type with `la` -/
+/-- Bundle the type with `la` (generally primed functions return pairs)-/
 def la' b β n := (la b β n, β)
 
-/-- Substitute `t'` for variable name `s` in a term -/
+/-- Substitute `t'` for variable name `s` in a term (oops I just ignored my convention) -/
 def sub' (s : String) (t' : Term) : Term → Term
   | name s' =>
     if s' == s then t' else name s'
@@ -194,7 +170,8 @@ def ap (f : Term) : Term → List Term → Term
 /-- Convert from variable names to de Bruijn indices -/
 def dbify (names : List String) : Term → Term
   | name s =>
-    var (names.idxOf? s).get! -- Panicking is usually bad but helpful here for debugging
+    -- Panicking is usually bad but helpful here for debugging
+    var (names.idxOf? s).get!
   | new s t =>
     dbify (s :: names) t
   | lam b β =>
@@ -216,9 +193,12 @@ def dbify (names : List String) : Term → Term
 
 /-
 ## The type checker
+
+Now for the fun part!
 -/
 
-/-- Get type of built-in functions -/
+/-- Get type of built-in functions (much nicer to write these in the vernacular!) -/
+-- TODO: Generate these at compile time
 def Term.btype (t : Term) :=
   dbify [] <|
     match t with
@@ -260,6 +240,7 @@ def Term.btype (t : Term) :=
       m◆(⊥ ⇨ 𝒰) ⇨ f◆⊥ ⇨ ap ’m (⊥ ⇨ 𝒰) [’f]
     | _ =>
       t
+-- We need a termination proof here because Lean is stupid
 termination_by
   match t with
   | prod_rec | sum_rec | eq_rec | nat_rec => 1
@@ -271,6 +252,7 @@ partial def eval : Term → Term
     lam (eval b) (eval β)
   | app f φ a α =>
     let f' := eval f
+    -- Apparently this works? 🤷
     match f', eval a with
     | lam b _, a' =>
       eval (sub a' b)
@@ -306,7 +288,8 @@ def check (env : List Term) : Term → Term → Bool
   | var x, α =>
     if _ : x < env.length then
       -- If `α == 𝒰₁`, then we must have previously ran `check env α 𝒰₁`
-      α == 𝒰₁ || cumeq env[x] α
+      -- The types in `env` have not been `eval`ed so we need to do that here
+      α == 𝒰₁ || cumeq (eval env[x]) α
     else
       false
   | lam b β, α ⇨ β' =>
@@ -316,6 +299,7 @@ def check (env : List Term) : Term → Term → Bool
   | α ⇨ β, typ u =>
     check env α (typ u) && check (incr <$> (α :: env)) β (typ u)
   | prod α β, typ u =>
+    -- Dependent products are special so we use `α ⇨ 𝒰` instead of `typ u`
     check env α (typ u) && check env β (α ⇨ 𝒰)
   | sum α β, typ u =>
     check env α (typ u) && check env β (typ u)
@@ -353,7 +337,46 @@ def ch (p : Term × Term) :=
 def apb f := ap f f.btype
 
 /-
+## Exporting proofs
+
+The type checker itself is simple enough to be easily ported to other programming languages, so we provide a way to export proofs in an s-exp format for parsing by external checkers.
+-/
+
+/-- Serialize term to s-exp -/
+def Term.toString : Term → String
+  | var x => s!"(0n {x})"
+  | lam b β => s!"(1n {toString b} {toString β})"
+  | app f φ a α => s!"(2n {toString f} {toString φ} {toString a} {toString α})"
+  | typ u => s!"(3n {u})"
+  | fn α β => s!"(4n {toString α} {toString β})"
+  | prod α β => s!"(5n {toString α} {toString β})"
+  | pmk => "(6n)"
+  | prod_rec => "(7n)"
+  | sum α β => s!"(8n {toString α} {toString β})"
+  | inl => "(9n)"
+  | inr => "(10n)"
+  | sum_rec => "(11n)"
+  | eq a a' α => s!"(12n {toString a} {toString a'} {toString α})"
+  | refl => "(13n)"
+  | eq_rec => "(14n)"
+  | nat => "(15n)"
+  | zero => "(16n)"
+  | succ => "(17n)"
+  | nat_rec => "(18n)"
+  | unit => "(19n)"
+  | intro => "(20n)"
+  | fls => "(21n)"
+  | fls_rec => "(22n)"
+  | _ => panic "You should call dbify before using toString!"
+
+/-- Serialize a term-type pair -/
+def serialize (p : Term × Term) :=
+  s!"'({dbify [] p.1 |>.toString} . {dbify [] p.2 |>.toString})"
+
+/-
 ## Proving some stuff
+
+Now let's do some math!
 -/
 
 /-- A → A -/
@@ -421,7 +444,7 @@ def exists_n_eq_zero :=
 
 /-- ∀ a : A, ∃ b : A, b = a -/
 def forall_a_exists_b_eq_a := la'
-  (apb pmk [’α, la (eq ’b ’a ’α) (b◆’α ⇨ 𝒰) 1, ’a, ap refl refl.btype [’α, ’a]])
+  (apb pmk [’α, la (eq ’b ’a ’α) (b◆’α ⇨ 𝒰) 1, ’a, apb refl [’α, ’a]])
   (α◆𝒰 ⇨ a◆’α ⇨ prod ’α (la (eq ’b ’a ’α) (b◆’α ⇨ 𝒰) 1))
   2
 
@@ -494,6 +517,7 @@ def if' := la'
 
 #guard ch if'
 
+/-- ⊥ implies anything -/
 def false_elim := la'
   (apb fls_rec [la ’α (⊥ ⇨ 𝒰) 1])
   (α◆𝒰 ⇨ ⊥ ⇨ ’α)
@@ -529,7 +553,7 @@ def zero_add := la'
 
 /-- n + 0 = 0 + n -/
 def add_zero_eq_zero_add := la'
-  sorry
+  (ap zero_add.1 zero_add.2 [’n])
   (n◆ℕ ⇨ eq (add ’n zero) (add zero ’n) ℕ)
   1
 
@@ -543,6 +567,14 @@ def add_comm := la'
 
 #guard ch add_comm
 
+/-- n + (m + k) = (n + m) + k -/
+def add_assoc := la'
+  sorry
+  (n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ eq (add ’n (add ’m ’k)) (add (add ’n ’m) ’k) ℕ)
+  2
+
+#guard ch add_assoc
+
 /-- Multiplication -/
 def mul' := la'
   (apb nat_rec [la ℕ (ℕ ⇨ 𝒰) 1, zero, la (add ’n ’m) (ℕ ⇨ m◆ℕ ⇨ ℕ) 2])
@@ -552,6 +584,13 @@ def mul' := la'
 #guard ch mul'
 
 def mul n m := ap mul'.1 mul'.2 [n, m]
+
+def mul_comm := la'
+  sorry
+  (n◆ℕ ⇨ m◆ℕ ⇨ eq (mul ’n ’m) (mul ’m ’n) ℕ)
+  2
+
+#guard ch mul_comm
 
 /-- 16 exists -/
 def sixteen :=
@@ -606,4 +645,5 @@ def fermat := la'
   (a◆ℕ ⇨ b◆ℕ ⇨ c◆ℕ ⇨ n◆ℕ ⇨ (eq ’a zero ℕ ⇨ ⊥) ⇨ (eq ’b zero ℕ ⇨ ⊥) ⇨ (eq ’c zero ℕ ⇨ ⊥) ⇨ (eq ’n zero ℕ ⇨ ⊥) ⇨ (eq ’n one ℕ ⇨ ⊥) ⇨ (eq ’n two ℕ ⇨ ⊥) ⇨ eq (add (pow ’a ’n) (pow ’b ’n)) (pow ’c ’n) ℕ ⇨ ⊥)
   10
 
+-- You can skip this one lol
 #guard ch fermat
