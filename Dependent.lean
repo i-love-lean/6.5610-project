@@ -1,4 +1,10 @@
--- μLean, a very simple proof assistant based on the calculus of constructions with cumulative universes and a few inductive types!
+/-
+# μLean
+
+A very simple proof assistant based on the calculus of constructions with cumulative universes and a few inductive types!
+
+## Basic definitions
+-/
 
 inductive Term
   -- The basic stuff
@@ -88,19 +94,9 @@ def Term.toString : Term → String
 
 -- instance : ToString (Term × Term) := ⟨fun p ↦ s!"(cons {p.1} {p.2})"⟩
 
--- `infixr` doesn't work at compile time or something
-notation α " ⇨ " β => fn α β -- \hey
-notation "𝒰" => typ 0 -- \McU
-notation "𝒰₁" => typ 1 -- \McU\1
-notation "ℕ" => nat -- \N
-notation "⊥" => fls -- \bo
--- `max` fixes some precedence issues when parsing
-syntax ident "◆" term:max : term -- \di
-macro_rules
-  | `($s:ident ◆ $t) => `(new $(Lean.Syntax.mkStrLit s.getId.toString) $t)
-syntax:max "’" ident : term -- \rq
-macro_rules
-  | `(’$s:ident) => `(name $(Lean.Syntax.mkStrLit s.getId.toString))
+/-
+## De Bruijn index manipulation
+-/
 
 /-- Helper function for recursing over terms -/
 def term_rec (s : α) (on_dep : α → α) (on_var : α → Nat → Term) :=
@@ -111,8 +107,8 @@ def term_rec (s : α) (on_dep : α → α) (on_var : α → Nat → Term) :=
     lam (term_rec' (on_dep s) b) (term_rec' (on_dep s) β)
   | app f φ a α =>
     app (term_rec' s f) (term_rec' s φ) (term_rec' s a) (term_rec' s α)
-  | α ⇨ β =>
-    term_rec' s α ⇨ term_rec' (on_dep s) β
+  | fn α β =>
+    fn (term_rec' s α) (term_rec' (on_dep s) β)
   | prod α β =>
     prod (term_rec' s α) (term_rec' s β)
   | sum α β =>
@@ -130,6 +126,24 @@ def incr :=
 /-- Substitute `t'` at index 0 in a term -/
 def sub (t' : Term) :=
   term_rec (0, t') (fun (d, t') ↦ (d + 1, incr t')) fun (d, t') x ↦ if x == d then t' else var (if d < x then x - 1 else x)
+
+/-
+## Syntactic sugar yay
+-/
+
+-- `infixr` doesn't work at compile time or something
+notation α " ⇨ " β => fn α β -- \hey
+notation "𝒰" => typ 0 -- \McU
+notation "𝒰₁" => typ 1 -- \McU\1
+notation "ℕ" => nat -- \N
+notation "⊥" => fls -- \bo
+-- `max` fixes some precedence issues when parsing
+syntax ident "◆" term:max : term -- \di
+macro_rules
+  | `($s:ident ◆ $t) => `(new $(Lean.Syntax.mkStrLit s.getId.toString) $t)
+syntax:max "’" ident : term -- \rq
+macro_rules
+  | `(’$s:ident) => `(name $(Lean.Syntax.mkStrLit s.getId.toString))
 
 /-- Convenience wrapper around `lam` with currying -/
 def la (b : Term) : Term → Nat → Term
@@ -199,6 +213,10 @@ def dbify (names : List String) : Term → Term
     eq (dbify names a) (dbify names a') (dbify names α)
   | t =>
     t
+
+/-
+## The type checker
+-/
 
 /-- Get type of built-in functions -/
 def Term.btype (t : Term) :=
@@ -306,6 +324,7 @@ def check (env : List Term) : Term → Term → Bool
   | t, τ =>
     cumeq t.btype τ
 
+-- A few test cases
 #guard check [] pmk.btype 𝒰₁
 
 #guard check [] prod_rec.btype 𝒰₁
@@ -324,7 +343,7 @@ def check (env : List Term) : Term → Term → Bool
 
 #guard check [] fls_rec.btype 𝒰₁
 
-/-- The type checker! -/
+/-- User-facing type checker -/
 def ch (p : Term × Term) :=
   let t := dbify [] p.1
   let τ := dbify [] p.2
@@ -332,6 +351,10 @@ def ch (p : Term × Term) :=
 
 /-- Apply built-in function -/
 def apb f := ap f f.btype
+
+/-
+## Proving some stuff
+-/
 
 /-- A → A -/
 def a_imp_a := la'
