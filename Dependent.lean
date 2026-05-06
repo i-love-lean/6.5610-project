@@ -198,6 +198,7 @@ Now for the fun part!
 -/
 
 /-- Get type of built-in functions (much nicer to write these in the vernacular!) -/
+-- TODO: don't dbify here?
 -- TODO: Generate these at compile time
 def Term.btype (t : Term) :=
   dbify [] <|
@@ -288,9 +289,8 @@ def cumeq a a' :=
 def check (env : List Term) : Term → Term → Bool
   | var x, α =>
     if _ : x < env.length then
-      -- If `α == 𝒰₁`, then we must have previously ran `check env α 𝒰₁` (ACTUALLY THIS MIGHT BE UNSOUND)
       -- The types in `env` have not been `eval`ed so we need to do that here
-      α == 𝒰₁ || cumeq (eval env[x]) α
+      cumeq (eval env[x]) α
     else
       false
   | lam b β, α ⇨ β' =>
@@ -306,6 +306,9 @@ def check (env : List Term) : Term → Term → Bool
     check env α (typ u) && check env β (typ u)
   | eq a a' α, typ u =>
     check env a α && check env a' α && check env α (typ u)
+  | 𝒰₁, _ =>
+    -- Avoid Girard's paradox
+    false
   | t, τ =>
     cumeq t.btype τ
 
@@ -373,6 +376,8 @@ def Term.toString : Term → String
 /-- Serialize a term-type pair -/
 def serialize (p : Term × Term) :=
   s!"'({dbify [] p.1 |>.toString} . {dbify [] p.2 |>.toString})"
+
+-- TODO: serialize all the btypes
 
 /-
 ## Proving some stuff
@@ -534,6 +539,8 @@ def rw := la'
 
 #guard ch rw
 
+-- TODO: eq_symm, eq_trans
+
 /-- n + (m + 1) = (n + m) + 1 -/
 def add_one_assoc := la'
   (apb refl [ℕ, add ’n (add ’m one)]) (n◆ℕ ⇨ m◆ℕ ⇨ eq (add ’n (add ’m one))
@@ -560,9 +567,40 @@ def add_zero_eq_zero_add := la'
 
 #guard ch add_zero_eq_zero_add
 
+/-- suc (m + n) = (suc m) + n -/
+def succ_add := la'
+  (apb nat_rec [
+    la (eq (suc (add ’m ’n)) (add (suc ’m) ’n) ℕ) (n◆ℕ ⇨ 𝒰) 1,
+    apb refl [ℕ, suc ’m],
+    la
+      (ap rw.1 rw.2 [ℕ, suc (add ’m ’n), add (suc ’m) ’n,
+        la (eq (suc (suc (add ’m ’n))) (suc ’x) ℕ) (x◆ℕ ⇨ 𝒰) 1,
+        ’h,
+        apb refl [ℕ, suc (suc (add ’m ’n))]])
+    (n◆ℕ ⇨ h◆(eq (suc (add ’m ’n)) (add (suc ’m) ’n) ℕ) ⇨
+      eq (suc (add ’m (suc ’n))) (add (suc ’m) (suc ’n)) ℕ) 2,
+    ’n])
+  (m◆ℕ ⇨ n◆ℕ ⇨ eq (suc (add ’m ’n)) (add (suc ’m) ’n) ℕ)
+  2
+
+#guard ch succ_add
+
 /-- n + m = m + n -/
 def add_comm := la'
-  sorry
+  (apb nat_rec [
+    la (eq (add ’n ’m) (add ’m ’n) ℕ) (m◆ℕ ⇨ 𝒰) 1,
+    ap add_zero_eq_zero_add.1 add_zero_eq_zero_add.2 [’n],
+    la
+      (ap rw.1 rw.2 [ℕ, suc (add ’m ’n), add (suc ’m) ’n,
+        la (eq (suc (add ’n ’m)) ’x ℕ) (x◆ℕ ⇨ 𝒰) 1,
+        ap succ_add.1 succ_add.2 [’m, ’n],
+        ap rw.1 rw.2 [ℕ, add ’n ’m, add ’m ’n,
+          la (eq (suc (add ’n ’m)) (suc ’x) ℕ) (x◆ℕ ⇨ 𝒰) 1,
+          ’h,
+          apb refl [ℕ, suc (add ’n ’m)]]])
+    (m◆ℕ ⇨ h◆(eq (add ’n ’m) (add ’m ’n) ℕ) ⇨
+      eq (add ’n (suc ’m)) (add (suc ’m) ’n) ℕ) 2,
+    ’m])
   (n◆ℕ ⇨ m◆ℕ ⇨ eq (add ’n ’m) (add ’m ’n) ℕ)
   2
 
@@ -570,7 +608,19 @@ def add_comm := la'
 
 /-- n + (m + k) = (n + m) + k -/
 def add_assoc := la'
-  sorry
+  (la
+    (apb nat_rec [
+      la (eq (add ’n (add ’m ’k)) (add (add ’n ’m) ’k) ℕ) (k◆ℕ ⇨ 𝒰) 1,
+      apb refl [ℕ, add ’n ’m],
+      la
+        (ap rw.1 rw.2 [ℕ, add ’n (add ’m ’k), add (add ’n ’m) ’k,
+          la (eq (suc (add ’n (add ’m ’k))) (suc ’x) ℕ) (x◆ℕ ⇨ 𝒰) 1,
+          ’h,
+          apb refl [ℕ, suc (add ’n (add ’m ’k))]])
+      (k◆ℕ ⇨ h◆(eq (add ’n (add ’m ’k)) (add (add ’n ’m) ’k) ℕ) ⇨
+        eq (add ’n (add ’m (suc ’k))) (add (add ’n ’m) (suc ’k)) ℕ) 2,
+      ’k])
+  (k◆ℕ ⇨ eq (add ’n (add ’m ’k)) (add (add ’n ’m) ’k) ℕ) 1)
   (n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ eq (add ’n (add ’m ’k)) (add (add ’n ’m) ’k) ℕ)
   2
 
@@ -648,3 +698,5 @@ def fermat := la'
 
 -- You can skip this one lol
 #guard ch fermat
+
+-- TODO identation
