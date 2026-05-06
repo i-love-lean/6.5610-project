@@ -146,7 +146,6 @@ def la (b : Term) : Term → Nat → Term
 def la' b β n := (la b β n, β)
 
 /-- Substitute `t'` for variable name `s` in a term -/
--- TODO: Is this necessary?
 def sub' (s : String) (t' : Term) : Term → Term
   | name s' =>
     if s' == s then t' else name s'
@@ -170,12 +169,11 @@ def sub' (s : String) (t' : Term) : Term → Term
 /-- Convenience wrapper around `app` with currying -/
 def ap (f : Term) : Term → List Term → Term
   | α ⇨ β, x :: xs =>
-    let β' :=
+    let (α', β') :=
       match α with
-      | new s _ => sub' s x β
-      | _ => sub x β
-    -- TODO: Need to eval both these guys?
-    ap (app f (α ⇨ β) x α) β' xs
+      | new s α' => (α', sub' s x β)
+      | α => (α, sub x β)
+    ap (app f (α ⇨ β) x α') β' xs
   | _, _ =>
     f
 
@@ -257,7 +255,7 @@ partial def eval : Term → Term
     let f' := eval f
     match f', eval a with
     | lam b _, a' =>
-      eval (sub (incr a') b)
+      eval (sub a' b)
     | app (app (app (app prod_rec _ _ _) _ _ _) _ _ _) _ g (α ⇨ γ), app (app (app (app pmk _ _ _) _ _ _) _ a _) _ b β =>
       eval (app (app g (α ⇨ γ) a α) (sub α γ) b β)
     | app (app (app (app (app sum_rec _ _ _) _ _ _) _ _ _) _ g γ) _ _ _, app (app (app inl _ _ _) _ _ _) _ a α =>
@@ -281,15 +279,9 @@ partial def eval : Term → Term
   | t =>
     t
 
-/-- Definitional equality -/
--- TODO: is this eval really needed???
-def defeq a a' := eval a == eval a'
-
-/-- Definitional equality, where cumulative universes are equal -/
--- TODO: is this eval really needed???
+/-- Equality, where cumulative universes are considered equal -/
 def cumeq a a' :=
-  let a'' := eval a
-  (a'' == 𝒰 && a' == 𝒰₁) || a'' == eval a'
+  (a == 𝒰 && a' == 𝒰₁) || a == eval a'
 
 /-- Only pass in trusted input for the second term! -/
 def check (env : List Term) : Term → Term → Bool
@@ -300,9 +292,9 @@ def check (env : List Term) : Term → Term → Bool
     else
       false
   | lam b β, α ⇨ β' =>
-    defeq β β' && check (incr <$> (α :: env)) b β
+    check (incr <$> (α :: env)) b β && eval β == eval β'
   | app f (α ⇨ β) a α', β' =>
-    defeq α α' && cumeq (eval (sub a β)) β' && check env f (α ⇨ β) && check env a α
+    check env f (α ⇨ β) && check env a α && eval α == eval α' && cumeq (eval (sub a β)) β'
   | α ⇨ β, typ u =>
     check env α (typ u) && check (incr <$> (α :: env)) β (typ u)
   | prod α β, typ u =>
@@ -332,145 +324,263 @@ def check (env : List Term) : Term → Term → Bool
 
 #guard check [] fls_rec.btype 𝒰₁
 
-#check Sigma.rec
-
 /-- The type checker! -/
 def ch (p : Term × Term) :=
   let t := dbify [] p.1
   let τ := dbify [] p.2
   check [] τ 𝒰₁ && check [] t τ
 
+/-- Apply built-in function -/
+def apb f := ap f f.btype
+
 /-- A → A -/
-def a_imp_a := la' ’a (α◆𝒰 ⇨ a◆’α ⇨ ’α) 2
+def a_imp_a := la'
+  ’a
+  (α◆𝒰 ⇨ a◆’α ⇨ ’α)
+  2
 
 #guard ch a_imp_a
 
 /-- A → B → A ∧ B -/
-def a_imp_b_imp_ab := la' (ap pmk pmk.btype [’α, la ’β (’α ⇨ 𝒰) 1]) (α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ ’β ⇨ prod ’α (la ’β (’α ⇨ 𝒰) 1)) 2
+def a_imp_b_imp_ab := la'
+  (apb pmk [’α, la ’β (’α ⇨ 𝒰) 1])
+  (α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ ’β ⇨ prod ’α (la ’β (’α ⇨ 𝒰) 1))
+  2
 
 #guard ch a_imp_b_imp_ab
 
 /-- A → B → B ∧ A -/
-def a_imp_b_imp_ba := la' (ap pmk pmk.btype [’β, la ’α (’β ⇨ 𝒰) 1, ’b, ’a]) (α◆𝒰 ⇨ β◆𝒰 ⇨ a◆’α ⇨ b◆’β ⇨ prod ’β (la ’α (’β ⇨ 𝒰) 1)) 4
+def a_imp_b_imp_ba := la'
+  (apb pmk [’β, la ’α (’β ⇨ 𝒰) 1, ’b, ’a])
+  (α◆𝒰 ⇨ β◆𝒰 ⇨ a◆’α ⇨ b◆’β ⇨ prod ’β (la ’α (’β ⇨ 𝒰) 1))
+  4
 
 #guard ch a_imp_b_imp_ba
 
 /-- Get first element of product -/
-def fst := la' (ap prod_rec prod_rec.btype [’α, ’β, la ’α (prod ’α ’β ⇨ 𝒰) 1, la ’a (a◆’α ⇨ ’β ⇨ ’α) 2, ’p]) (α◆𝒰 ⇨ β◆(’α ⇨ 𝒰) ⇨ p◆(prod ’α ’β) ⇨ ’α) 3
+def fst := la'
+  (apb prod_rec [’α, ’β, la ’α (prod ’α ’β ⇨ 𝒰) 1, la ’a (a◆’α ⇨ (ap ’β (’α ⇨ 𝒰) [’a]) ⇨ ’α) 2, ’p])
+  (α◆𝒰 ⇨ β◆(’α ⇨ 𝒰) ⇨ p◆(prod ’α ’β) ⇨ ’α)
+  3
 
 #guard ch fst
 
-/-- Get second element of product -/
-def snd := la' (ap prod_rec prod_rec.btype [’α, ’β, la ’β (prod ’α ’β ⇨ 𝒰) 1, la ’b (’α ⇨ b◆’β ⇨ ’β) 2, ’p]) (α◆𝒰 ⇨ β◆𝒰 ⇨ p◆(prod ’α ’β) ⇨ ’β) 3
-
-#guard ch snd
-
-/-- A ∧ B → B ∧ A -/
-def ab_imp_ba := la' (ap pmk pmk.btype [’β, la ’α (’β ⇨ 𝒰) 1, ap snd.1 snd.2 [’α, ’β, ’p], ap fst.1 fst.2 [’α, ’β, ’p]]) (α◆𝒰 ⇨ β◆𝒰 ⇨ p◆(prod ’α (la ’β (’α ⇨ 𝒰) 1)) ⇨ prod ’β (la ’α (’β ⇨ 𝒰) 1)) 3
-
-#guard ch ab_imp_ba
-
 /-- ¬(A ∨ B) → ¬A -/
-def not_ab_imp_not_a := la' (ap ’f (sum ’α ’β ⇨ ⊥) [ap inl inl.btype [’α, ’β, ’a]]) (α◆𝒰 ⇨ β◆𝒰 ⇨ f◆(sum ’α ’β ⇨ ⊥) ⇨ a◆’α ⇨ ⊥) 4
+def not_ab_imp_not_a := la'
+  (ap ’f (sum ’α ’β ⇨ ⊥) [apb inl [’α, ’β, ’a]])
+  (α◆𝒰 ⇨ β◆𝒰 ⇨ f◆(sum ’α ’β ⇨ ⊥) ⇨ a◆’α ⇨ ⊥)
+  4
 
 #guard ch not_ab_imp_not_a
 
 /-- A → ¬¬A -/
-def a_imp_not_not_a := la' (ap ’f (’α ⇨ ⊥) [’a]) (α◆𝒰 ⇨ a◆’α ⇨ f◆(’α ⇨ ⊥) ⇨ ⊥) 3
+def a_imp_not_not_a := la'
+  (ap ’f (’α ⇨ ⊥) [’a])
+  (α◆𝒰 ⇨ a◆’α ⇨ f◆(’α ⇨ ⊥) ⇨ ⊥)
+  3
 
 #guard ch a_imp_not_not_a
 
 /-- ¬¬¬A → ¬A -/
-def not_not_not_a_imp_not_a := la' (ap ’f (((’α ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) [la (ap ’f (’α ⇨ ⊥) [’a]) (f◆(’α ⇨ ⊥) ⇨ ⊥) 1]) (α◆𝒰 ⇨ f◆(((’α ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) ⇨ a◆’α ⇨ ⊥) 3
+def not_not_not_a_imp_not_a := la'
+  (ap ’f (((’α ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) [la (ap ’f (’α ⇨ ⊥) [’a])
+  (f◆(’α ⇨ ⊥) ⇨ ⊥) 1]) (α◆𝒰 ⇨ f◆(((’α ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) ⇨ a◆’α ⇨ ⊥)
+  3
 
 #guard ch not_not_not_a_imp_not_a
 
-/-- ∀ a : A, ∃ b : A, b = a -/
-def forall_a_exists_b_eq_a := la' (ap pmk pmk.btype [’α, eq ’a (var 0) ’α, ’a, ap refl refl.btype [’α, ’a]]) (α◆𝒰 ⇨ a◆’α ⇨ prod (b◆’α) (eq ’a ’b ’α)) 2
-
-#guard ch forall_a_exists_b_eq_a
-
 /-- ∃ n : ℕ, n = 0 -/
-def exists_n_eq_zero := (ap pmk pmk.btype [ℕ, la (eq ’n zero ℕ) (n◆ℕ ⇨ 𝒰) 1, zero, ap refl refl.btype [ℕ, zero]], prod ℕ (la (eq ’n zero ℕ) (n◆ℕ ⇨ 𝒰) 1))
+def exists_n_eq_zero :=
+  (apb pmk [ℕ, la (eq ’n zero ℕ) (n◆ℕ ⇨ 𝒰) 1, zero, apb refl [ℕ, zero]],
+    prod ℕ (la (eq ’n zero ℕ) (n◆ℕ ⇨ 𝒰) 1))
 
 #guard ch exists_n_eq_zero
 
+/-- ∀ a : A, ∃ b : A, b = a -/
+def forall_a_exists_b_eq_a := la'
+  (apb pmk [’α, la (eq ’b ’a ’α) (b◆’α ⇨ 𝒰) 1, ’a, ap refl refl.btype [’α, ’a]])
+  (α◆𝒰 ⇨ a◆’α ⇨ prod ’α (la (eq ’b ’a ’α) (b◆’α ⇨ 𝒰) 1))
+  2
+
+#guard ch forall_a_exists_b_eq_a
+
 /-- Convenience wrapper around `succ` -/
-def succ' n := ap succ (ℕ ⇨ ℕ) [n]
+def suc n := ap succ (ℕ ⇨ ℕ) [n]
 
 /-- 1 exists (yeah I know this is not super exciting) -/
-def one := succ' zero
+def one := suc zero
 
 #guard ch (one, ℕ)
 
 /-- 2 exists -/
-def two := succ' one
+def two := suc one
 
 #guard ch (two, ℕ)
 
 /-- 4 exists -/
-def four := succ' (succ' two)
+def four := suc (suc two)
 
 #guard ch (four, ℕ)
 
 /-- Addition -/
-def add := la' (ap nat_rec nat_rec.btype [la ℕ (ℕ ⇨ 𝒰) 1, ’n, la (succ' ’m) (ℕ ⇨ m◆ℕ ⇨ ℕ) 2]) (n◆ℕ ⇨ ℕ ⇨ ℕ) 1
+def add' := la'
+  (apb nat_rec [la ℕ (ℕ ⇨ 𝒰) 1, ’n, la (suc ’m) (ℕ ⇨ m◆ℕ ⇨ ℕ) 2])
+  (n◆ℕ ⇨ ℕ ⇨ ℕ)
+  1
 
-#guard ch add
+#guard ch add'
+
+def add n m := ap add'.1 add'.2 [n, m]
 
 /-- 0 + 0 = 0 -/
-def zero_plus_zero_eq_zero := (ap refl refl.btype [ℕ, zero], eq (ap add.1 add.2 [zero, zero]) zero ℕ)
+def zero_plus_zero_eq_zero :=
+  (apb refl [ℕ, zero],
+    eq (add zero zero) zero ℕ)
 
 #guard ch zero_plus_zero_eq_zero
 
 /-- 0 + 1 = 0 -/
-def zero_plus_one_eq_one := (ap refl refl.btype [ℕ, one], eq (ap add.1 add.2 [zero, one]) one ℕ)
+def zero_plus_one_eq_one :=
+  (apb refl [ℕ, one],
+    eq (add zero one) one ℕ)
 
 #guard ch zero_plus_one_eq_one
 
 /-- 2 + 0 = 2 -/
-def two_plus_zero_eq_two := (ap refl refl.btype [ℕ, two], eq (ap add.1 add.2 [two, zero]) two ℕ)
+def two_plus_zero_eq_two :=
+  (apb refl [ℕ, two],
+    eq (add two zero) two ℕ)
 
 #guard ch two_plus_zero_eq_two
 
 /-- 2 + 2 = 4 -/
-def two_plus_two_eq_four := (ap refl refl.btype [ℕ, four], eq (ap add.1 add.2 [two, two]) four ℕ)
+def two_plus_two_eq_four :=
+  (apb refl [ℕ, four],
+    eq (add two two) four ℕ)
 
 #guard ch two_plus_two_eq_four
 
+/-- Boolean -/
+def bool' := sum unit unit
+
+/-- If statement -/
+def if' := la'
+  (apb sum_rec [unit, unit, la ’α (bool' ⇨ 𝒰) 1, la ’a (unit ⇨ ’α) 1, la ’a' (unit ⇨ ’α) 1, ’b])
+  (α◆𝒰 ⇨ b◆bool' ⇨ a◆’α ⇨ a'◆’α ⇨ ’α)
+  4
+
+#guard ch if'
+
+def false_elim := la'
+  (apb fls_rec [la ’α (⊥ ⇨ 𝒰) 1])
+  (α◆𝒰 ⇨ ⊥ ⇨ ’α)
+  1
+
+#guard ch false_elim
+
 /-- Rewrite with an equality -/
-def rw := la' (ap eq_rec eq_rec.btype [’α, ’a, la (ap ’p (’α ⇨ 𝒰) [’x]) (x◆’α ⇨ (eq ’a ’x ’α) ⇨ 𝒰) 2]) (α◆𝒰 ⇨ a◆’α ⇨ b◆’α ⇨ p◆(’α ⇨ 𝒰) ⇨ eq ’a ’b ’α ⇨ ap ’p (’α ⇨ 𝒰) [’a] ⇨ ap ’p (’α ⇨ 𝒰) [’b]) 6
+def rw := la'
+  (apb eq_rec [’α, ’a, la (ap ’p (’α ⇨ 𝒰) [’x]) (x◆’α ⇨ (eq ’a ’x ’α) ⇨ 𝒰) 2, ’ha, ’b, ’h])
+  (α◆𝒰 ⇨ a◆’α ⇨ b◆’α ⇨ p◆(’α ⇨ 𝒰) ⇨ h◆(eq ’a ’b ’α) ⇨ ha◆(ap ’p (’α ⇨ 𝒰) [’a]) ⇨ ap ’p (’α ⇨ 𝒰) [’b])
+  6
 
 #guard ch rw
 
-/-- n + 0 = 0 + n -/
-def add_zero := la' sorry (n◆ℕ ⇨ eq (ap add.1 add.2 [’n, zero]) (ap add.1 add.2 [zero, ’n]) ℕ) 1
+/-- n + (m + 1) = (n + m) + 1 -/
+def add_one_assoc := la'
+  (apb refl [ℕ, add ’n (add ’m one)]) (n◆ℕ ⇨ m◆ℕ ⇨ eq (add ’n (add ’m one))
+  (add (add ’n ’m) one) ℕ)
+  2
 
-#guard ch n_plus_zero_eq_zero_plus_n
+#guard ch add_one_assoc
+
+/-- n = 0 + n -/
+def zero_add := la'
+  (apb nat_rec [la (eq ’n (add zero ’n) ℕ) (n◆ℕ ⇨ 𝒰) 1, apb refl [ℕ, zero], la
+    (ap rw.1 rw.2 [ℕ, ’n, add zero ’n, la (eq (add ’n one) (add ’m one) ℕ) (m◆ℕ ⇨ 𝒰) 1, ’h, apb refl [ℕ, add ’n one]])
+  (n◆ℕ ⇨ h◆(eq ’n (add zero ’n) ℕ) ⇨ eq (add ’n one) (add zero (add ’n one)) ℕ) 2, ’n])
+  (n◆ℕ ⇨ eq ’n (add zero ’n) ℕ)
+  1
+
+#guard ch zero_add
+
+/-- n + 0 = 0 + n -/
+def add_zero_eq_zero_add := la'
+  sorry
+  (n◆ℕ ⇨ eq (add ’n zero) (add zero ’n) ℕ)
+  1
+
+#guard ch add_zero_eq_zero_add
 
 /-- n + m = m + n -/
-def add_comm := la' sorry (n◆ℕ ⇨ m◆ℕ ⇨ eq (ap add.1 add.2 [’n, ’m]) (ap add.1 add.2 [’m, ’n]) ℕ) 2
+def add_comm := la'
+  sorry
+  (n◆ℕ ⇨ m◆ℕ ⇨ eq (add ’n ’m) (add ’m ’n) ℕ)
+  2
 
 #guard ch add_comm
 
 /-- Multiplication -/
-def mul := la' (ap nat_rec nat_rec.btype [la ℕ (ℕ ⇨ 𝒰) 1, zero, la (ap add.1 add.2 [’n, ’m]) (ℕ ⇨ m◆ℕ ⇨ ℕ) 2]) (n◆ℕ ⇨ ℕ ⇨ ℕ) 1
+def mul' := la'
+  (apb nat_rec [la ℕ (ℕ ⇨ 𝒰) 1, zero, la (add ’n ’m) (ℕ ⇨ m◆ℕ ⇨ ℕ) 2])
+  (n◆ℕ ⇨ ℕ ⇨ ℕ)
+  1
 
-#guard ch mul
+#guard ch mul'
 
-#eval eval (dbify [] <| ap mul.1 mul.2 [zero, two])
+def mul n m := ap mul'.1 mul'.2 [n, m]
+
+/-- 16 exists -/
+def sixteen :=
+  suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc four)))))))))))
+
+#guard ch (sixteen, ℕ)
+
+/-- 4 × 4 = 16 -/
+def four_times_four_eq_sixteen :=
+  (apb refl [ℕ, sixteen],
+    eq (mul four four) sixteen ℕ)
+
+#guard ch four_times_four_eq_sixteen
+
+/-- Factorial function -/
+def fac := la'
+  (apb nat_rec [la ℕ (ℕ ⇨ 𝒰) 1, one, la (mul (add one ’n) ’fn)
+  (n◆ℕ ⇨ fn◆ℕ ⇨ ℕ) 2, ’n])
+  (n◆ℕ ⇨ ℕ)
+  1
+
+#guard ch fac
+
+/-- 4 + 2 = 3! -/
+def four_plus_two_eq_three_factorial :=
+  (apb refl [ℕ, add four two],
+    eq (ap fac.1 fac.2 [suc two]) (add four two) ℕ)
+
+#eval ch four_plus_two_eq_three_factorial
 
 /-- Exponentiation -/
-def pow := la' (ap nat_rec nat_rec.btype [la ℕ (ℕ ⇨ 𝒰) 1, one, la (ap mul.1 mul.2 [’n, ’m]) (ℕ ⇨ m◆ℕ ⇨ ℕ) 2]) (n◆ℕ ⇨ ℕ ⇨ ℕ) 1
+def pow' := la'
+  (apb nat_rec [la ℕ (ℕ ⇨ 𝒰) 1, one, la (mul ’n ’m)
+  (ℕ ⇨ m◆ℕ ⇨ ℕ) 2])
+  (n◆ℕ ⇨ ℕ ⇨ ℕ)
+  1
 
-#guard ch pow
+#guard ch pow'
 
-#eval eval (ap pow.1 pow.2 [one, one])
+def pow n m := ap pow'.1 pow'.2 [n, m]
+
+/-- 2⁴ = 16 -/
+def two_to_the_four_eq_sixteen :=
+  (apb refl [ℕ, sixteen],
+    eq (pow two four) sixteen ℕ)
+
+#guard ch two_to_the_four_eq_sixteen
 
 /-- Fermat's last theorem -/
-def fermat := la' sorry (a◆ℕ ⇨ b◆ℕ ⇨ c◆ℕ ⇨ n◆ℕ ⇨ (eq ’a zero ℕ ⇨ ⊥) ⇨ (eq ’b zero ℕ ⇨ ⊥) ⇨ (eq ’c zero ℕ ⇨ ⊥) ⇨ (eq ’n zero ℕ ⇨ ⊥) ⇨ (eq ’n one ℕ ⇨ ⊥) ⇨ (eq ’n two ℕ ⇨ ⊥) ⇨ eq (ap add.1 add.2 [ap pow.1 pow.2 [’a, ’n], ap pow.1 pow.2 [’b, ’n]]) (ap pow.1 pow.2 [’c, ’n]) ℕ ⇨ ⊥) 10
+def fermat := la'
+  sorry
+  (a◆ℕ ⇨ b◆ℕ ⇨ c◆ℕ ⇨ n◆ℕ ⇨ (eq ’a zero ℕ ⇨ ⊥) ⇨ (eq ’b zero ℕ ⇨ ⊥) ⇨ (eq ’c zero ℕ ⇨ ⊥) ⇨ (eq ’n zero ℕ ⇨ ⊥) ⇨ (eq ’n one ℕ ⇨ ⊥) ⇨ (eq ’n two ℕ ⇨ ⊥) ⇨ eq (add (pow ’a ’n) (pow ’b ’n)) (pow ’c ’n) ℕ ⇨ ⊥)
+  10
 
 #guard ch fermat
-
-
--- TODO: if statements using sum type of units and rec, factorial
