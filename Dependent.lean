@@ -257,15 +257,16 @@ partial def eval : Term → Term
     | lam b _, a' =>
       eval (sub a' b)
     | app (app (app (app prod_rec _ _ _) _ _ _) _ _ _) _ g (α ⇨ γ), app (app (app (app pmk _ _ _) _ _ _) _ a _) _ b β =>
-      eval (app (app g (α ⇨ γ) a α) (sub α γ) b β)
+      eval (app (app g (α ⇨ γ) a α) (sub a γ) b β)
     | app (app (app (app (app sum_rec _ _ _) _ _ _) _ _ _) _ g γ) _ _ _, app (app (app inl _ _ _) _ _ _) _ a α =>
       eval (app g γ a α)
     | app (app (app (app (app sum_rec _ _ _) _ _ _) _ _ _) _ _ _) _ g γ, app (app (app inr _ _ _) _ _ _) _ b β =>
       eval (app g γ b β)
+    -- TODO: handle eq_rec
     | app (app (app nat_rec _ _ _) _ z _) _ _ _, zero =>
       eval z
     | app (app (app nat_rec _ m _) _ _ _) _ g (ℕ ⇨ γ), app succ (ℕ ⇨ ℕ) n ℕ =>
-      eval (app (app g (ℕ ⇨ γ) n ℕ) (sub ℕ γ) (app f' φ n ℕ) (app m (ℕ ⇨ 𝒰) n ℕ))
+      eval (app (app g (ℕ ⇨ γ) n ℕ) (sub n γ) (app f' φ n ℕ) (app m (ℕ ⇨ 𝒰) n ℕ))
     | x, a' =>
       app x (eval φ) a' (eval α)
   | α ⇨ β =>
@@ -287,7 +288,7 @@ def cumeq a a' :=
 def check (env : List Term) : Term → Term → Bool
   | var x, α =>
     if _ : x < env.length then
-      -- If `α == 𝒰₁`, then we must have previously ran `check env α 𝒰₁`
+      -- If `α == 𝒰₁`, then we must have previously ran `check env α 𝒰₁` (ACTUALLY THIS MIGHT BE UNSOUND)
       -- The types in `env` have not been `eval`ed so we need to do that here
       α == 𝒰₁ || cumeq (eval env[x]) α
     else
