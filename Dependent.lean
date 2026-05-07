@@ -1,11 +1,12 @@
+import Lean.Elab
 import Std.Data.HashSet
 
 /-
 # μLean
 
-A very simple proof assistant based on the calculus of constructions with a few inductive types!
+A very simple proof assistant in 1000 lines of code!
 
-μLean's type system is very similar to Lean (obviously) but with fewer features to make the implementation simpler. Unlike Lean, μLean only has two cumulative universes, since stuff above `Type 1` is rarely used in practice anyways. To avoid paradoxes, `Type 1` in μLean does not have a type. Propositions in μLean live in `Type` instead of a dedicated `Prop` universe, which also avoids a lot of Lean's `Prop` weirdness. Lastly, μLean does not have the law of excluded middle.
+μLean's type system is based on the calculus of constructions and very similar to Lean (obviously), but with fewer features to make the implementation simpler. μLean does not have general inductive types and instead has a few hardcoded inductive types such as the natural numbers. Additionally, μLean only has two cumulative universes, since stuff above `Type 1` is rarely used in practice anyways. To avoid paradoxes, `Type 1` in μLean does not have a type. Propositions in μLean live in `Type` instead of a dedicated `Prop` universe, which avoids a lot of Lean's `Prop` weirdness.
 
 ## Basic definitions
 -/
@@ -68,7 +69,7 @@ inductive Term
   /-- Dependent function with named first type -/
   | vfn (s : String) (α β : Term)
 -- These let us compare terms
-deriving BEq, ReflBEq, LawfulBEq
+deriving BEq, ReflBEq, LawfulBEq, Lean.ToExpr
 
 open Term
 
@@ -282,13 +283,12 @@ def dbify (names : List String) : Term → Term
     t
 
 /-
-## The type checker
+## Built-in functions
 
-Now for the fun part!
+Now that are vernacular is ready, we'll generate the types of the built-in functions such as `pmk` at compile time.
 -/
 
-/-- Get type of built-in functions (much nicer to write these in the vernacular!) -/
--- TODO: Generate these at compile time
+/-- Get type of built-in functions (basically a direct translation of the type signatures of the equivalent functions in Lean) -/
 def Term.btype (t : Term) :=
   match t with
   | 𝒰 =>
@@ -335,6 +335,40 @@ termination_by
   | prod_rec | sum_rec | eq_rec | nat_rec => 1
   | _ => 0
 
+open Lean Elab Term in
+/-- Compute `dbtype` at compile-time -/
+elab "precompute_dbtypes" : term => do
+  return toExpr <|
+    [𝒰, pmk, prod_rec, inl, inr, sum_rec, refl, eq_rec, ℕ, zero, succ, nat_rec, unit, intro, ⊥, fls_rec].map (dbify [] ·.btype)
+
+def dbtypes := precompute_dbtypes
+
+/-- Yeah I know this is inelegant but metaprogramming is too dark magic for me -/
+def Term.dbtype
+  | 𝒰 => dbtypes[0]
+  | pmk => dbtypes[1]
+  | prod_rec => dbtypes[2]
+  | inl => dbtypes[3]
+  | inr => dbtypes[4]
+  | sum_rec => dbtypes[5]
+  | refl => dbtypes[6]
+  | eq_rec => dbtypes[7]
+  | ℕ => dbtypes[8]
+  | zero => dbtypes[9]
+  | succ => dbtypes[10]
+  | nat_rec => dbtypes[11]
+  | unit => dbtypes[12]
+  | intro => dbtypes[13]
+  | ⊥ => dbtypes[14]
+  | fls_rec => dbtypes[15]
+  | t => t
+
+/-
+## The type checker
+
+Time for the fun part!
+-/
+
 /-- Helper function for recursing over terms -/
 def term_rec (s : α) (fdep : α → α) (fvar : α → Nat → Term) :=
   let rec g s
@@ -364,13 +398,12 @@ def incr :=
 def sub (t' : Term) :=
   term_rec (0, t') (fun (d, t') ↦ (d + 1, incr t')) fun (d, t') x ↦ if x == d then t' else var (if d < x then x - 1 else x)
 
-/-- The input should be well-typed or bad things will happen! -/
+/-- The janky evaluator (the input should be well-typed or bad things will happen) -/
 partial def eval : Term → Term
   | lam b β =>
     lam (eval b) (eval β)
   | app f φ a α =>
     let f' := eval f
-    -- Apparently this works? 🤷
     match f', eval a with
     | lam b _, a' =>
       eval (sub a' b)
@@ -403,7 +436,7 @@ partial def eval : Term → Term
 def cumeq a a' :=
   (a == 𝒰 && a' == 𝒰₁) || a == eval a'
 
-/-- Only pass in trusted input for the second term! -/
+/-- And finally, the type checker! (the second input term should be well-typed) -/
 def check (env : List Term) : Term → Term → Bool
   | var x, α =>
     if _ : x < env.length then
@@ -425,30 +458,29 @@ def check (env : List Term) : Term → Term → Bool
   | eq a a' α, typ u =>
     check env a α && check env a' α && check env α (typ u)
   | 𝒰₁, _ =>
-    -- Bandaid to avoid Girard's paradox
-    -- TODO: Handle this with btype better
+    -- Prevent Girard's paradox
     false
   | t, τ =>
-    cumeq (dbify [] t.btype) τ
+    cumeq t.dbtype τ
 
 -- A few test cases
-#guard check [] (dbify [] pmk.btype) 𝒰₁
+#guard check [] pmk.dbtype 𝒰₁
 
-#guard check [] (dbify [] prod_rec.btype) 𝒰₁
+#guard check [] prod_rec.dbtype 𝒰₁
 
-#guard check [] (dbify [] inl.btype) 𝒰₁
+#guard check [] inl.dbtype 𝒰₁
 
-#guard check [] (dbify [] inr.btype) 𝒰₁
+#guard check [] inr.dbtype 𝒰₁
 
-#guard check [] (dbify [] sum_rec.btype) 𝒰₁
+#guard check [] sum_rec.dbtype 𝒰₁
 
-#guard check [] (dbify [] refl.btype) 𝒰₁
+#guard check [] refl.dbtype 𝒰₁
 
-#guard check [] (dbify [] eq_rec.btype) 𝒰₁
+#guard check [] eq_rec.dbtype 𝒰₁
 
-#guard check [] (dbify [] nat_rec.btype) 𝒰₁
+#guard check [] nat_rec.dbtype 𝒰₁
 
-#guard check [] (dbify [] fls_rec.btype) 𝒰₁
+#guard check [] fls_rec.dbtype 𝒰₁
 
 #guard !check [] 𝒰₁ 𝒰₁
 
@@ -498,12 +530,13 @@ def Term.toString : Term → String
 def serialize (p : Term × Term) :=
   s!"'({dbify [] p.1 |>.toString} . {dbify [] p.2 |>.toString})"
 
--- TODO: serialize all the btypes
+-- Hardcode this into external proof checkers
+#eval toString <$> dbtypes
 
 /-
 ## Proving some stuff
 
-Now let's do some math!
+Now let's try out μLean and do some math!
 -/
 
 /-- A → A -/
