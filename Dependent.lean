@@ -1,5 +1,5 @@
 import Lean.Elab
-import Std.Data.HashSet
+import Std.Data.ExtHashSet
 
 /-
 # μLean
@@ -136,7 +136,7 @@ def free (s : String) : Term → Bool
     false
 
 /-- Collect all names used in a term -/
-def names : Term → Std.HashSet String
+def names : Term → Std.ExtHashSet String
   | lam b β =>
     names b ∪ names β
   | app f φ a α =>
@@ -156,16 +156,38 @@ def names : Term → Std.HashSet String
   | _ =>
     ∅
 
-/-- Generate a name not in the given set -/
-def gensym (S : Std.HashSet String) : Id String := do
-  for i in [0:S.size + 1] do
+/-- Generate a name not in a set -/
+def gensym (S : Std.ExtHashSet String) := Id.run do
+  for i in List.range (S.size + 1) do
     if toString i ∉ S then
       return toString i
   return ""
 
--- TODO: Prove using mvcgen?
+open Std Do ExtHashSet in
+/-- `gensym` returns a string not in its input set -/
 theorem gensym_correct : gensym S ∉ S := by
-  sorry
+  generalize h : gensym S = x
+  apply Id.of_wp_run_eq h
+  mvcgen invariants
+  · Invariant.withEarlyReturn
+      (onReturn := fun ret _ ↦ ⌜ret ∉ S⌝)
+      (onContinue := fun xs _ ↦ ⌜∀ i < xs.prefix.length, toString i ∈ S⌝)
+  with (expose_names; try grind)
+  · left
+    simp_all
+    intro i hi
+    by_cases h : i = pref.length
+    · grind [congrArg (·[pref.length]!) h_1] -- The `!` is scary but this works?
+    · exact h_3.2 i (by grind)
+  · let T := List.range (List.range (S.size + 1) |>.length) |>.map toString
+    have : S ∪ ofList T = S := by
+      ext i -- This is why we need `ExtHashSet` instead of just `HashSet`
+      constructor
+      · simp_all
+        grind
+      · simp_all
+    have : (ofList T).size = T.length := size_ofList (by simp [List.pairwise_iff_getElem, T]; grind)
+    grind [size_right_le_size_union]
 
 /-- Rename free occurrences of `s₁` to `s₂`, respecting scoping -/
 def rename (s₁ s₂ : String) : Term → Term
@@ -207,6 +229,7 @@ def Term.sizeOf : Term → Nat
   | _ =>
     1
 
+/-- `rename` doesn't change the size of a term -/
 theorem rename_size (s₁ s₂ t) : t.sizeOf = (rename s₁ s₂ t).sizeOf := by
   induction t <;> grind [rename, Term.sizeOf]
 
@@ -439,11 +462,8 @@ def cumeq a a' :=
 /-- And finally, the type checker! (the second input term should be well-typed) -/
 def check (env : List Term) : Term → Term → Bool
   | var x, α =>
-    if _ : x < env.length then
-      -- The types in `env` have not been `eval`ed so we need to do that here
-      cumeq (eval env[x]) α
-    else
-      false
+    -- The types in `env` have not been `eval`ed so we need to do that here
+    if _ : x < env.length then cumeq (eval env[x]) α else false
   | lam b β, α ⇨ β' =>
     check (incr <$> (α :: env)) b β && eval β == eval β'
   | app f (α ⇨ β) a α', β' =>
@@ -483,6 +503,9 @@ def check (env : List Term) : Term → Term → Bool
 #guard check [] fls_rec.dbtype 𝒰₁
 
 #guard !check [] 𝒰₁ 𝒰₁
+
+-- TODO: This should pass the type check?
+-- #guard check [] (dbify [] (f◆(ℕ ⇨ ℕ ⇨ 𝒰) ⇨ n◆ℕ ⇨ (ap ’f (ℕ ⇨ ℕ ⇨ 𝒰) [’n]))) 𝒰₁
 
 /-- User-facing type checker -/
 def ch (p : Term × Term) :=
@@ -770,22 +793,22 @@ def cong_add_r := la'
 
 #guard ch cong_add_r
 
-  /-- n = 0 + n -/
-  def zero_add := la'
-    (apb nat_rec
-      [la (eq ’n (add zero ’n) ℕ) (n◆ℕ ⇨ 𝒰) 1, apb refl [ℕ, zero],
-        la
-          (ap rw.1 rw.2
-            [ℕ, ’n, add zero ’n,
-              la (eq (add ’n one) (add ’m one) ℕ) (m◆ℕ ⇨ 𝒰) 1,
-              ’h, apb refl [ℕ, add ’n one]])
-          (n◆ℕ ⇨ h◆(eq ’n (add zero ’n) ℕ) ⇨ eq (add ’n one) (add zero (add ’n one)) ℕ)
-          2,
-        ’n])
-    (n◆ℕ ⇨ eq ’n (add zero ’n) ℕ)
-    1
+/-- n = 0 + n -/
+def zero_add := la'
+  (apb nat_rec
+    [la (eq ’n (add zero ’n) ℕ) (n◆ℕ ⇨ 𝒰) 1, apb refl [ℕ, zero],
+      la
+        (ap rw.1 rw.2
+          [ℕ, ’n, add zero ’n,
+            la (eq (add ’n one) (add ’m one) ℕ) (m◆ℕ ⇨ 𝒰) 1,
+            ’h, apb refl [ℕ, add ’n one]])
+        (n◆ℕ ⇨ h◆(eq ’n (add zero ’n) ℕ) ⇨ eq (add ’n one) (add zero (add ’n one)) ℕ)
+        2,
+      ’n])
+  (n◆ℕ ⇨ eq ’n (add zero ’n) ℕ)
+  1
 
-  #guard ch zero_add
+#guard ch zero_add
 
 /-- n + 0 = 0 + n -/
 def add_zero_eq_zero_add := la'
@@ -823,10 +846,10 @@ def add_comm := la'
           [ℕ, suc (add ’m ’n), add (suc ’m) ’n,
             la (eq (suc (add ’n ’m)) ’x ℕ) (x◆ℕ ⇨ 𝒰) 1,
             ap succ_add.1 succ_add.2 [’m, ’n],
-            ap rw.1 rw.2 [ℕ, add ’n ’m, add ’m ’n,
-            la (eq (suc (add ’n ’m)) (suc ’x) ℕ) (x◆ℕ ⇨ 𝒰) 1,
-            ’h,
-            apb refl [ℕ, suc (add ’n ’m)]]])
+            ap rw.1 rw.2
+              [ℕ, add ’n ’m, add ’m ’n,
+                la (eq (suc (add ’n ’m)) (suc ’x) ℕ) (x◆ℕ ⇨ 𝒰) 1,
+                ’h, apb refl [ℕ, suc (add ’n ’m)]]])
       (m◆ℕ ⇨ h◆(eq (add ’n ’m) (add ’m ’n) ℕ) ⇨ eq (add ’n (suc ’m)) (add (suc ’m) ’n) ℕ) 2, ’m])
   (n◆ℕ ⇨ m◆ℕ ⇨ eq (add ’n ’m) (add ’m ’n) ℕ)
   2
