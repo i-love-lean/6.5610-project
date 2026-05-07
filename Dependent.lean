@@ -770,22 +770,22 @@ def cong_add_r := la'
 
 #guard ch cong_add_r
 
-/-- n = 0 + n -/
-def zero_add := la'
-  (apb nat_rec
-    [la (eq ’n (add zero ’n) ℕ) (n◆ℕ ⇨ 𝒰) 1, apb refl [ℕ, zero],
-      la
-        (ap rw.1 rw.2
-          [ℕ, ’n, add zero ’n,
-            la (eq (add ’n one) (add ’m one) ℕ) (m◆ℕ ⇨ 𝒰) 1,
-            ’h, apb refl [ℕ, add ’n one]])
-        (n◆ℕ ⇨ h◆(eq ’n (add zero ’n) ℕ) ⇨ eq (add ’n one) (add zero (add ’n one)) ℕ)
-        2,
-      ’n])
-  (n◆ℕ ⇨ eq ’n (add zero ’n) ℕ)
-  1
+  /-- n = 0 + n -/
+  def zero_add := la'
+    (apb nat_rec
+      [la (eq ’n (add zero ’n) ℕ) (n◆ℕ ⇨ 𝒰) 1, apb refl [ℕ, zero],
+        la
+          (ap rw.1 rw.2
+            [ℕ, ’n, add zero ’n,
+              la (eq (add ’n one) (add ’m one) ℕ) (m◆ℕ ⇨ 𝒰) 1,
+              ’h, apb refl [ℕ, add ’n one]])
+          (n◆ℕ ⇨ h◆(eq ’n (add zero ’n) ℕ) ⇨ eq (add ’n one) (add zero (add ’n one)) ℕ)
+          2,
+        ’n])
+    (n◆ℕ ⇨ eq ’n (add zero ’n) ℕ)
+    1
 
-#guard ch zero_add
+  #guard ch zero_add
 
 /-- n + 0 = 0 + n -/
 def add_zero_eq_zero_add := la'
@@ -948,7 +948,7 @@ def sixteen :=
 
 #guard ch (sixteen, ℕ)
 
-/-- 4 × 4 = 16 -/
+/-- 4 * 4 = 16 -/
 def four_times_four_eq_sixteen :=
   (apb refl [ℕ, sixteen],
     eq (mul four four) sixteen ℕ)
@@ -982,7 +982,7 @@ def pow' := la'
 
 def pow n m := ap pow'.1 pow'.2 [n, m]
 
-/-- 2⁴ = 16 -/
+/-- 2 ^ 4 = 16 -/
 def two_to_the_four_eq_sixteen :=
   (apb refl [ℕ, sixteen],
     eq (pow two four) sixteen ℕ)
@@ -998,5 +998,6 @@ def fermat := la'
 -- #guard ch fermat
 
 def main := do
+  -- Takes 3.5 seconds to run when compiled
   IO.FS.writeFile "mul_comm" <| serialize mul_comm
   IO.println <| ch mul_comm
