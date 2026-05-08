@@ -1,0 +1,215 @@
+import os
+
+dbtypes_strs = [
+    "(3n 1)",
+    "(4n (3n 0) (4n (4n (0n 0) (3n 0)) (4n (0n 1) (4n (2n (0n 1) (4n (0n 2) (3n 0)) (0n 0) (0n 2)) (5n (0n 3) (0n 2))))))",
+    "(4n (3n 0) (4n (4n (0n 0) (3n 0)) (4n (4n (5n (0n 1) (0n 0)) (3n 0)) (4n (4n (0n 2) (4n (2n (0n 2) (4n (0n 3) (3n 0)) (0n 0) (0n 3)) (2n (0n 2) (4n (5n (0n 4) (0n 3)) (3n 0)) (2n (2n (2n (2n (6n) (4n (3n 0) (4n (4n (0n 0) (3n 0)) (4n (0n 1) (4n (2n (0n 1) (4n (0n 2) (3n 0)) (0n 0) (0n 2)) (5n (0n 3) (0n 2)))))) (0n 4) (3n 0)) (4n (4n (0n 4) (3n 0)) (4n (0n 5) (4n (2n (0n 1) (4n (0n 6) (3n 0)) (0n 0) (0n 6)) (5n (0n 7) (0n 2))))) (0n 3) (4n (0n 4) (3n 0))) (4n (0n 4) (4n (2n (0n 4) (4n (0n 5) (3n 0)) (0n 0) (0n 5)) (5n (0n 6) (0n 5)))) (0n 1) (0n 4)) (4n (2n (0n 3) (4n (0n 4) (3n 0)) (0n 1) (0n 4)) (5n (0n 5) (0n 4))) (0n 0) (2n (0n 3) (4n (0n 4) (3n 0)) (0n 1) (0n 4))) (5n (0n 4) (0n 3))))) (4n (5n (0n 3) (0n 2)) (2n (0n 2) (4n (5n (0n 4) (0n 3)) (3n 0)) (0n 0) (5n (0n 4) (0n 3))))))))",
+    "(4n (3n 0) (4n (3n 0) (4n (0n 1) (8n (0n 2) (0n 1)))))",
+    "(4n (3n 0) (4n (3n 0) (4n (0n 0) (8n (0n 2) (0n 1)))))",
+    "(4n (3n 0) (4n (3n 0) (4n (4n (8n (0n 1) (0n 0)) (3n 0)) (4n (4n (0n 2) (2n (0n 1) (4n (8n (0n 3) (0n 2)) (3n 0)) (2n (2n (2n (9n) (4n (3n 0) (4n (3n 0) (4n (0n 1) (8n (0n 2) (0n 1))))) (0n 3) (3n 0)) (4n (3n 0) (4n (0n 4) (8n (0n 5) (0n 1)))) (0n 2) (3n 0)) (4n (0n 3) (8n (0n 4) (0n 3))) (0n 0) (0n 3)) (8n (0n 3) (0n 2)))) (4n (4n (0n 2) (2n (0n 2) (4n (8n (0n 4) (0n 3)) (3n 0)) (2n (2n (2n (10n) (4n (3n 0) (4n (3n 0) (4n (0n 0) (8n (0n 2) (0n 1))))) (0n 4) (3n 0)) (4n (3n 0) (4n (0n 0) (8n (0n 6) (0n 1)))) (0n 3) (3n 0)) (4n (0n 3) (8n (0n 5) (0n 4))) (0n 0) (0n 3)) (8n (0n 4) (0n 3)))) (4n (8n (0n 4) (0n 3)) (2n (0n 3) (4n (8n (0n 5) (0n 4)) (3n 0)) (0n 0) (8n (0n 5) (0n 4)))))))))",
+    "(4n (3n 0) (4n (0n 0) (12n (0n 0) (0n 0) (0n 1))))",
+    "(4n (3n 0) (4n (0n 0) (4n (4n (0n 1) (4n (12n (0n 1) (0n 0) (0n 2)) (3n 0))) (4n (2n (2n (0n 0) (4n (0n 2) (4n (12n (0n 2) (0n 0) (0n 3)) (3n 0))) (0n 1) (0n 2)) (4n (12n (0n 1) (0n 1) (0n 2)) (3n 0)) (2n (2n (13n) (4n (3n 0) (4n (0n 0) (12n (0n 0) (0n 0) (0n 1)))) (0n 2) (3n 0)) (4n (0n 2) (12n (0n 0) (0n 0) (0n 3))) (0n 1) (0n 2)) (12n (0n 1) (0n 1) (0n 2))) (4n (0n 3) (4n (12n (0n 3) (0n 0) (0n 4)) (2n (2n (0n 3) (4n (0n 5) (4n (12n (0n 5) (0n 0) (0n 6)) (3n 0))) (0n 1) (0n 5)) (4n (12n (0n 4) (0n 1) (0n 5)) (3n 0)) (0n 0) (12n (0n 4) (0n 1) (0n 5)))))))))",
+    "(3n 0)",
+    "(15n)",
+    "(4n (15n) (15n))",
+    "(4n (4n (15n) (3n 0)) (4n (2n (0n 0) (4n (15n) (3n 0)) (16n) (15n)) (4n (4n (15n) (4n (2n (0n 2) (4n (15n) (3n 0)) (0n 0) (15n)) (2n (0n 3) (4n (15n) (3n 0)) (2n (17n) (4n (15n) (15n)) (0n 1) (15n)) (15n)))) (4n (15n) (2n (0n 3) (4n (15n) (3n 0)) (0n 0) (15n))))))",
+    "(3n 0)",
+    "(19n)",
+    "(3n 0)",
+    "(4n (4n (21n) (3n 0)) (4n (21n) (2n (0n 1) (4n (21n) (3n 0)) (0n 0) (21n))))"
+]
+
+def make_if_chain(conds_and_bodies, fallback):
+    if not conds_and_bodies:
+        return fallback
+    cond, body = conds_and_bodies[0]
+    return f"(if {cond} {body} {make_if_chain(conds_and_bodies[1:], fallback)})"
+
+out = []
+out.append("!(def arg1 (lambda (x) (car (cdr x))))")
+out.append("!(def arg2 (lambda (x) (car (cdr (cdr x)))))")
+out.append("!(def arg3 (lambda (x) (car (cdr (cdr (cdr x))))))")
+out.append("!(def arg4 (lambda (x) (car (cdr (cdr (cdr (cdr x)))))))")
+
+out.append("!(defrec geti (lambda (xs i) (if (= i 0) (car xs) (geti (cdr xs) (- i 1)))))")
+
+out.append("!(def and (lambda (x y) (if x (if y t nil) nil)))")
+out.append("!(def or (lambda (x y) (if x t (if y t nil))))")
+
+out.append("!(def is_app1 (lambda (term op) (if (= (car term) 2n) (= (car (arg1 term)) op) nil)))")
+out.append("!(def is_app2 (lambda (term op) (if (= (car term) 2n) (is_app1 (arg1 term) op) nil)))")
+out.append("!(def is_app3 (lambda (term op) (if (= (car term) 2n) (is_app2 (arg1 term) op) nil)))")
+out.append("!(def is_app4 (lambda (term op) (if (= (car term) 2n) (is_app3 (arg1 term) op) nil)))")
+out.append("!(def is_app5 (lambda (term op) (if (= (car term) 2n) (is_app4 (arg1 term) op) nil)))")
+
+out.append("!(defrec map (lambda (f xs) (if (eq xs nil) nil (cons (f (car xs)) (map f (cdr xs))))))")
+out.append("!(defrec len (lambda (xs) (if (eq xs nil) 0 (+ 1 (len (cdr xs))))))")
+
+db_list = " ".join(f"'{s}" for s in dbtypes_strs)
+out.append(f"!(def dbtypes (list {db_list}))")
+
+conds = [
+    ("(= op 3n)", "(if (= (arg1 term) 0) (geti dbtypes 0) term)"),
+    ("(= op 6n)", "(geti dbtypes 1)"),
+    ("(= op 7n)", "(geti dbtypes 2)"),
+    ("(= op 9n)", "(geti dbtypes 3)"),
+    ("(= op 10n)", "(geti dbtypes 4)"),
+    ("(= op 11n)", "(geti dbtypes 5)"),
+    ("(= op 13n)", "(geti dbtypes 6)"),
+    ("(= op 14n)", "(geti dbtypes 7)"),
+    ("(= op 15n)", "(geti dbtypes 8)"),
+    ("(= op 16n)", "(geti dbtypes 9)"),
+    ("(= op 17n)", "(geti dbtypes 10)"),
+    ("(= op 18n)", "(geti dbtypes 11)"),
+    ("(= op 19n)", "(geti dbtypes 12)"),
+    ("(= op 20n)", "(geti dbtypes 13)"),
+    ("(= op 21n)", "(geti dbtypes 14)"),
+    ("(= op 22n)", "(geti dbtypes 15)"),
+]
+out.append(f"!(def get-dbtype (lambda (term) (let ((op (car term))) {make_if_chain(conds, 'term')})))")
+
+conds = [
+    ("(= op 0n)", "(fvar s (arg1 term))"),
+    ("(= op 1n)", "(list 1n (term-rec (arg1 term) (fdep s) fdep fvar) (term-rec (arg2 term) (fdep s) fdep fvar))"),
+    ("(= op 2n)", "(list 2n (term-rec (arg1 term) s fdep fvar) (term-rec (arg2 term) s fdep fvar) (term-rec (arg3 term) s fdep fvar) (term-rec (arg4 term) s fdep fvar))"),
+    ("(= op 4n)", "(list 4n (term-rec (arg1 term) s fdep fvar) (term-rec (arg2 term) (fdep s) fdep fvar))"),
+    ("(= op 5n)", "(list 5n (term-rec (arg1 term) s fdep fvar) (term-rec (arg2 term) s fdep fvar))"),
+    ("(= op 8n)", "(list 8n (term-rec (arg1 term) s fdep fvar) (term-rec (arg2 term) s fdep fvar))"),
+    ("(= op 12n)", "(list 12n (term-rec (arg1 term) s fdep fvar) (term-rec (arg2 term) s fdep fvar) (term-rec (arg3 term) s fdep fvar))")
+]
+out.append(f"!(defrec term-rec (lambda (term s fdep fvar) (let ((op (car term))) {make_if_chain(conds, 'term')})))")
+
+out.append("!(def incr (lambda (term) (term-rec term 0 (lambda (d) (+ d 1)) (lambda (d x) (list 0n (if (<= d x) (+ x 1) x))))))")
+
+out.append("!(def sub (lambda (term t_prime) (term-rec term (cons 0 t_prime) (lambda (s) (cons (+ (car s) 1) (incr (cdr s)))) (lambda (s x) (let ((d (car s)) (tp (cdr s))) (if (= x d) tp (list 0n (if (< d x) (- x 1) x))))))))")
+
+eval_inner_conds = [
+    ("(= f_op 1n)", "(evaluate (sub (arg1 f_prime) a_prime))"),
+    ("(and (is_app4 f_prime 7n) (is_app4 a_prime 6n))", """(let ((g (arg3 f_prime))
+                  (alpha_gamma (arg4 f_prime))
+                  (a_val (arg3 (arg1 a_prime)))
+                  (b (arg3 a_prime))
+                  (beta (arg4 a_prime))
+                  (alpha_val (arg1 alpha_gamma))
+                  (gamma (arg2 alpha_gamma)))
+              (evaluate (list 2n (list 2n g (list 4n alpha_val gamma) a_val alpha_val) (sub gamma a_val) b beta)))"""),
+    ("(and (is_app5 f_prime 11n) (is_app3 a_prime 9n))", """(let ((g (arg3 (arg1 f_prime)))
+                  (gamma (arg4 (arg1 f_prime)))
+                  (a_val (arg3 a_prime))
+                  (alpha_val (arg4 a_prime)))
+              (evaluate (list 2n g gamma a_val alpha_val)))"""),
+    ("(and (is_app5 f_prime 11n) (is_app3 a_prime 10n))", """(let ((g (arg3 f_prime))
+                  (gamma (arg4 f_prime))
+                  (b_val (arg3 a_prime))
+                  (beta_val (arg4 a_prime)))
+              (evaluate (list 2n g gamma b_val beta_val)))"""),
+    ("(and (is_app5 f_prime 14n) (is_app2 a_prime 13n))", "(let ((ha (arg3 (arg1 f_prime)))) (evaluate ha))"),
+    ("(and (is_app3 f_prime 18n) (= (car a_prime) 16n))", "(let ((z (arg3 (arg1 f_prime)))) (evaluate z))"),
+    ("(and (is_app3 f_prime 18n) (is_app1 a_prime 17n))", """(let ((m (arg3 (arg1 (arg1 f_prime))))
+                  (g (arg3 f_prime))
+                  (gamma (arg2 (arg4 f_prime)))
+                  (n (arg3 a_prime)))
+              (evaluate (list 2n
+                (list 2n g (list 4n '(15n) gamma) n '(15n))
+                (sub gamma n)
+                (list 2n f_prime phi n '(15n))
+                (list 2n m (list 4n '(15n) '(3n 0)) n '(15n)))))""")
+]
+eval_inner_fallback = "(list 2n f_prime phi_prime a_prime alpha_prime)"
+eval_inner = f"""(let ((f_prime (evaluate (arg1 term)))
+            (a_prime (evaluate (arg3 term)))
+            (phi (arg2 term))
+            (phi_prime (evaluate phi))
+            (alpha_prime (evaluate (arg4 term))))
+        (let ((f_op (car f_prime))) {make_if_chain(eval_inner_conds, eval_inner_fallback)}))"""
+
+eval_conds = [
+    ("(= op 1n)", "(list 1n (evaluate (arg1 term)) (evaluate (arg2 term)))"),
+    ("(= op 4n)", "(list 4n (evaluate (arg1 term)) (evaluate (arg2 term)))"),
+    ("(= op 5n)", "(list 5n (evaluate (arg1 term)) (evaluate (arg2 term)))"),
+    ("(= op 8n)", "(list 8n (evaluate (arg1 term)) (evaluate (arg2 term)))"),
+    ("(= op 12n)", "(list 12n (evaluate (arg1 term)) (evaluate (arg2 term)) (evaluate (arg3 term)))"),
+    ("(= op 2n)", eval_inner),
+]
+out.append(f"!(defrec evaluate (lambda (term) (let ((op (car term))) {make_if_chain(eval_conds, 'term')})))")
+
+out.append("!(defrec cumeq (lambda (a a_prime) (if (and (eq a '(3n 0)) (eq a_prime '(3n 1))) t (eq a (evaluate a_prime)))))")
+
+check_conds = [
+    ("(= t_op 0n)", """(let ((x (arg1 term)))
+        (if (< x (len env))
+          (cumeq (evaluate (geti env x)) tau)
+          nil))"""),
+    ("(and (= t_op 1n) (= tau_op 4n))", """(let ((b (arg1 term))
+            (beta (arg2 term))
+            (alpha (arg1 tau))
+            (beta_prime (arg2 tau))
+            (new_env (cons (incr alpha) (map incr env))))
+        (if (check new_env b beta)
+          (cumeq (evaluate beta) (evaluate beta_prime))
+          nil))"""),
+    ("(= t_op 2n)", """(let ((f (arg1 term))
+            (phi (arg2 term))
+            (a (arg3 term))
+            (alpha_prime (arg4 term)))
+        (if (= (car phi) 4n)
+          (let ((alpha (arg1 phi))
+                (beta (arg2 phi)))
+            (if (check env f phi)
+              (if (check env a alpha)
+                (if (cumeq (evaluate alpha) (evaluate alpha_prime))
+                  (cumeq (evaluate (sub beta a)) tau)
+                  nil)
+                nil)
+              nil))
+          (cumeq (get-dbtype term) tau)))"""),
+    ("(and (= t_op 4n) (= tau_op 3n))", """(let ((alpha (arg1 term))
+            (beta (arg2 term))
+            (new_env (cons (incr alpha) (map incr env))))
+        (if (check env alpha tau)
+          (check new_env beta tau)
+          nil))"""),
+    ("(and (= t_op 5n) (= tau_op 3n))", """(let ((alpha (arg1 term))
+            (beta (arg2 term)))
+        (if (check env alpha tau)
+          (check env beta (list 4n alpha '(3n 0)))
+          nil))"""),
+    ("(and (= t_op 8n) (= tau_op 3n))", """(let ((alpha (arg1 term))
+            (beta (arg2 term)))
+        (if (check env alpha tau)
+          (check env beta tau)
+          nil))"""),
+    ("(and (= t_op 12n) (= tau_op 3n))", """(let ((a (arg1 term))
+            (a_prime (arg2 term))
+            (alpha (arg3 term)))
+        (if (check env a alpha)
+          (if (check env a_prime alpha)
+            (check env alpha tau)
+            nil)
+          nil))"""),
+    ("(= t_op 3n)", "(if (= (arg1 term) 1) nil (cumeq (get-dbtype term) tau))")
+]
+check_fallback = "(cumeq (get-dbtype term) tau)"
+out.append(f"!(defrec check (lambda (env term tau) (let ((t_op (car term)) (tau_op (car tau))) {make_if_chain(check_conds, check_fallback)})))")
+
+out.append("!(def check_pair (lambda (term tau) (if (check nil tau '(3n 1)) (check nil term tau) nil)))")
+
+with open("/6.5610-project/dependent.lurk", "w") as f:
+    f.write("\n\n".join(out))
+
+test_lurk = ['!(load "dependent.lurk")']
+proofs_dir = "/6.5610-project/proofs"
+proofs = sorted(os.listdir(proofs_dir))
+for proof in proofs:
+    if proof == "mul_comm":
+        continue
+    filepath = os.path.join(proofs_dir, proof)
+    with open(filepath, 'r') as f:
+        content = f.read().strip()
+    test_lurk.append(f"!(def {proof} {content})")
+    test_lurk.append(f"!(assert (check_pair (car {proof}) (cdr {proof})))")
+
+with open("/6.5610-project/test.lurk", "w") as f:
+    f.write("\n".join(test_lurk))
+
+print("Generated safely!")

@@ -177,7 +177,7 @@ theorem gensym_correct : gensym S ∉ S := by
     simp_all
     intro i hi
     by_cases h : i = pref.length
-    · grind [congrArg (·[pref.length]!) h_1] -- The `!` is scary but this works?
+    · grind [congrArg (·[pref.length]?) h_1]
     · exact h_3.2 i (by grind)
   · let T := List.range (List.range (S.size + 1) |>.length) |>.map toString
     have : S ∪ ofList T = S := by
@@ -1020,7 +1020,9 @@ def fermat := la'
 
 -- #guard ch fermat
 
-def main := do
-  -- Takes 3.5 seconds to run when compiled
-  IO.FS.writeFile "mul_comm" <| serialize mul_comm
+-- Takes 3.5 seconds to run when compiled
+def main : IO Unit := do
+  -- IO.FS.writeFile "mul_comm" <| serialize mul_comm
+  let start ← IO.monoMsNow
   IO.println <| ch mul_comm
+  IO.println s!"Took {(← IO.monoMsNow) - start}ms to check mul_comm"

@@ -1,0 +1,3 @@
+!(defq add_zero_eq_zero_add_protocol_loaded !(load-expr "protocol"))
+!(inspect "3202a919bbdd68edac66b8ea53dd0c4c0ef86d00774b74b8a0dfcef7cd416f")
+!(verify-protocol add_zero_eq_zero_add_protocol_loaded "proof")
