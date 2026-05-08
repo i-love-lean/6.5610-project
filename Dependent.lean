@@ -384,7 +384,7 @@ def Term.dbtype
   | intro => dbtypes[13]
   | ⊥ => dbtypes[14]
   | fls_rec => dbtypes[15]
-  | t => t
+  | t => name "bad"
 
 /-
 ## The type checker
@@ -503,6 +503,8 @@ def check (env : List Term) : Term → Term → Bool
 #guard check [] fls_rec.dbtype 𝒰₁
 
 #guard !check [] 𝒰₁ 𝒰₁
+
+#guard !check [] (prod 𝒰 𝒰) (prod 𝒰 𝒰)
 
 -- TODO: This should pass the type check?
 -- #guard check [] (dbify [] (f◆(ℕ ⇨ ℕ ⇨ 𝒰) ⇨ n◆ℕ ⇨ (ap ’f (ℕ ⇨ ℕ ⇨ 𝒰) [’n]))) 𝒰₁
