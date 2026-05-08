@@ -1025,4 +1025,5 @@ def main : IO Unit := do
   -- IO.FS.writeFile "mul_comm" <| serialize mul_comm
   let start ← IO.monoMsNow
   IO.println <| ch mul_comm
+  -- Should take around 125ms, so most of the runtime is actually spent desugaring the vernacular
   IO.println s!"Took {(← IO.monoMsNow) - start}ms to check mul_comm"
