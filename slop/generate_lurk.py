@@ -66,7 +66,7 @@ conds = [
     ("(= op 21n)", "(geti dbtypes 14)"),
     ("(= op 22n)", "(geti dbtypes 15)"),
 ]
-out.append(f"!(def get-dbtype (lambda (term) (let ((op (car term))) {make_if_chain(conds, 'term')})))")
+out.append(f"!(def get-dbtype (lambda (term) (let ((op (car term))) {make_if_chain(conds, 'nil')})))")
 
 conds = [
     ("(= op 0n)", "(fvar s (arg1 term))"),

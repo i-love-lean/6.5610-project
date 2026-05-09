@@ -198,7 +198,7 @@ def get_dbtype(t: Term) -> Term:
         case Intro(): return dbtypes[13]
         case Fls(): return dbtypes[14]
         case FlsRec(): return dbtypes[15]
-        case _: return t
+        case _: return 0
 
 def term_rec(t: Term, s: Any, fdep, fvar) -> Term:
     def g(s, term):
