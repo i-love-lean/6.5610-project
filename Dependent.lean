@@ -996,6 +996,46 @@ def four_plus_two_eq_three_factorial :=
 
 #guard ch four_plus_two_eq_three_factorial
 
+def nat_pair := prod ℕ (la ℕ (ℕ ⇨ 𝒰) 1)
+
+/-- Get second element of `nat_pair` -/
+def nat_snd := la'
+  (apb prod_rec
+    [ℕ, la ℕ (ℕ ⇨ 𝒰) 1,
+      la ℕ (nat_pair ⇨ 𝒰) 1,
+      la ’b (a◆ℕ ⇨ b◆ℕ ⇨ ℕ) 2, ’p])
+  (p◆nat_pair ⇨ ℕ)
+  1
+
+#guard ch nat_snd
+
+/-- Fibonacci function -/
+def fib := la'
+  (ap fst.1 fst.2
+    [ℕ, la ℕ (ℕ ⇨ 𝒰) 1,
+      (apb nat_rec
+      [la nat_pair (ℕ ⇨ 𝒰) 1,
+        apb pmk [ℕ, la ℕ (ℕ ⇨ 𝒰) 1, zero, one],
+        la
+          (apb pmk
+            [ℕ, la ℕ (ℕ ⇨ 𝒰) 1,
+              ap nat_snd.1 nat_snd.2 [’nf],
+              add (ap fst.1 fst.2 [ℕ, la ℕ (ℕ ⇨ 𝒰) 1, ’nf]) (ap nat_snd.1 nat_snd.2 [’nf])])
+          (n◆ℕ ⇨ nf◆nat_pair ⇨ nat_pair)
+          2,
+        ’n])])
+  (n◆ℕ ⇨ ℕ)
+  1
+
+#guard ch fib
+
+/-- fib (4 + 2) = 4 * 2 -/
+def fib_four_plus_two_eq_four_times_two :=
+  (apb refl [ℕ, add four four],
+    eq (ap fib.1 fib.2 [add four two]) (mul four two) ℕ)
+
+#guard ch fib_four_plus_two_eq_four_times_two
+
 /-- Exponentiation -/
 def pow' := la'
   (apb nat_rec [la ℕ (ℕ ⇨ 𝒰) 1, one, la (mul ’n ’m)
