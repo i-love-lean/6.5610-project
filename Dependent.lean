@@ -95,9 +95,10 @@ macro_rules
   | `(’$s:ident) => `(name $(Lean.Syntax.mkStrLit s.getId.toString))
 
 /-- Convenience wrapper around `lam` with currying -/
-def la (b : Term) : List Term → Term
-  | name s :: xs =>
-    vlam s (la b xs)
+def la (names : List Term) (b : Term) :=
+  match names with
+  | name s :: names =>
+    vlam s (la names b)
   | _ =>
     b
 
@@ -516,7 +517,7 @@ def apb f := ap f f.btype
 /-- Apply a function and type pair -/
 def apr (p : Term × Term) := ap p.1 p.2
 
-def const b := la b [’unused]
+def const b := la [’unused] b
 
 /-
 ## Exporting proofs
@@ -566,67 +567,61 @@ Now let's try out μLean and do some math!
 
 /-- A → A -/
 def a_imp_a :=
-  (la ’a [’α, ’a],
+  (la [’α, ’a] ’a,
     α◆𝒰 ⇨ a◆’α ⇨ ’α)
 
 #guard ch a_imp_a
 
 /-- A → B → A ∧ B -/
 def a_imp_b_imp_ab :=
-  (la
-    (apb pmk [’α, const ’β])
-    [’α, ’β],
-    (α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ ’β ⇨ prod ’α (const ’β)))
+  (la [’α, ’β]
+    (apb pmk [’α, const ’β]),
+    α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ ’β ⇨ prod ’α (const ’β))
 
 #guard ch a_imp_b_imp_ab
 
 /-- A → B → B ∧ A -/
 def a_imp_b_imp_ba :=
-  (la
-    (apb pmk [’β, const ’α, ’b, ’a])
-    [’α, ’β, ’a, ’b],
+  (la [’α, ’β, ’a, ’b]
+    (apb pmk [’β, const ’α, ’b, ’a]),
     α◆𝒰 ⇨ β◆𝒰 ⇨ a◆’α ⇨ b◆’β ⇨ prod ’β (const ’α))
 
 #guard ch a_imp_b_imp_ba
 
 /-- Get first element of product -/
 def fst :=
-  (la
+  (la [’α, ’β, ’p]
     (apb prod_rec [
-      ’α, ’β, const ’α, la ’a [’a, ’b], ’p
-    ])
-    [’α, ’β, ’p],
+      ’α, ’β, const ’α, la [’a, ’b] ’a, ’p
+    ]),
     α◆𝒰 ⇨ β◆(’α ⇨ 𝒰) ⇨ p◆(prod ’α ’β) ⇨ ’α)
 
 #guard ch fst
 
 /-- ¬(A ∨ B) → ¬A -/
 def not_ab_imp_not_a :=
-  (la
+  (la [’α, ’β, ’f, ’a]
     (ap ’f (sum ’α ’β ⇨ ⊥) [
       apb inl [’α, ’β, ’a]
-    ])
-    [’α, ’β, ’f, ’a],
+    ]),
     α◆𝒰 ⇨ β◆𝒰 ⇨ f◆(sum ’α ’β ⇨ ⊥) ⇨ a◆’α ⇨ ⊥)
 
 #guard ch not_ab_imp_not_a
 
 /-- A → ¬¬A -/
 def a_imp_not_not_a :=
-  (la
-    (ap ’f (’α ⇨ ⊥) [’a])
-    [’α, ’a, ’f],
+  (la [’α, ’a, ’f]
+    (ap ’f (’α ⇨ ⊥) [’a]),
     α◆𝒰 ⇨ a◆’α ⇨ f◆(’α ⇨ ⊥) ⇨ ⊥)
 
 #guard ch a_imp_not_not_a
 
 /-- ¬¬¬A → ¬A -/
 def not_not_not_a_imp_not_a :=
-  (la
+  (la [’α, ’f, ’a]
     (ap ’f (((’α ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) [
-      la (ap ’f (’α ⇨ ⊥) [’a]) [’f]
-    ])
-    [’α, ’f, ’a],
+      la [’f] (ap ’f (’α ⇨ ⊥) [’a])
+    ]),
     α◆𝒰 ⇨ f◆(((’α ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) ⇨ a◆’α ⇨ ⊥)
 
 #guard ch not_not_not_a_imp_not_a
@@ -634,20 +629,19 @@ def not_not_not_a_imp_not_a :=
 /-- ∃ n : ℕ, n = 0 -/
 def exists_n_eq_zero :=
   (apb pmk [
-    ℕ, la (eq ’n zero ℕ) [’n], zero, apb refl [ℕ, zero]
+    ℕ, la [’n] (eq ’n zero ℕ), zero, apb refl [ℕ, zero]
   ],
-    prod ℕ (la (eq ’n zero ℕ) [’n]))
+    prod ℕ (la [’n] (eq ’n zero ℕ)))
 
 #guard ch exists_n_eq_zero
 
 /-- ∀ a : A, ∃ b : A, b = a -/
 def forall_a_exists_b_eq_a :=
-  (la
+  (la [’α, ’a]
     (apb pmk [
-      ’α, la (eq ’b ’a ’α) [’b], ’a, apb refl [’α, ’a]
-    ])
-    [’α, ’a],
-    α◆𝒰 ⇨ a◆’α ⇨ prod ’α (la (eq ’b ’a ’α) [’b]))
+      ’α, la [’b] (eq ’b ’a ’α), ’a, apb refl [’α, ’a]
+    ]),
+    α◆𝒰 ⇨ a◆’α ⇨ prod ’α (la [’b] (eq ’b ’a ’α)))
 
 #guard ch forall_a_exists_b_eq_a
 
@@ -671,11 +665,10 @@ def four := suc (suc two)
 
 /-- Addition -/
 def add' :=
-  (la
+  (la [’n]
     (apb nat_rec [
-      const ℕ, ’n, la (suc ’m) [’k, ’m]
-    ])
-    [’n],
+      const ℕ, ’n, la [’k, ’m] (suc ’m)
+    ]),
     n◆ℕ ⇨ ℕ ⇨ ℕ)
 
 #guard ch add'
@@ -715,207 +708,191 @@ def bool' := sum unit unit
 
 /-- If statement -/
 def if' :=
-  (la
+  (la [’α, ’b, ’a, ’a']
     (apb sum_rec [
       unit, unit, const ’α, const ’a, const ’a', ’b
-    ])
-    [’α, ’b, ’a, ’a'],
+    ]),
     α◆𝒰 ⇨ b◆bool' ⇨ a◆’α ⇨ a'◆’α ⇨ ’α)
 
 #guard ch if'
 
 /-- ⊥ implies anything -/
 def false_elim :=
-  (la
-    (apb fls_rec [const ’α])
-    [’α],
+  (la [’α]
+    (apb fls_rec [const ’α]),
     α◆𝒰 ⇨ ⊥ ⇨ ’α)
 
 #guard ch false_elim
 
 /-- Rewrite with an equality -/
 def rw :=
-  (la
+  (la [’α, ’a, ’b, ’p, ’h, ’ha]
     (apb eq_rec [
       ’α, ’a,
-      la (ap ’p (’α ⇨ 𝒰) [’x]) [’x, ’h],
+      la [’x, ’h] (ap ’p (’α ⇨ 𝒰) [’x]),
       ’ha, ’b, ’h
-    ])
-    [’α, ’a, ’b, ’p, ’h, ’ha],
+    ]),
     α◆𝒰 ⇨ a◆’α ⇨ b◆’α ⇨ p◆(’α ⇨ 𝒰) ⇨ h◆(eq ’a ’b ’α) ⇨ ha◆(ap ’p (’α ⇨ 𝒰) [’a]) ⇨ ap ’p (’α ⇨ 𝒰) [’b])
 
 #guard ch rw
 
 /-- a = b → b = a -/
 def eq_symm :=
-  (la
+  (la [’α, ’a, ’b, ’h]
     (apb eq_rec [
       ’α, ’a,
-      la (eq ’x ’a ’α) [’x, ’h],
+      la [’x, ’h] (eq ’x ’a ’α),
       apb refl [’α, ’a], ’b, ’h
-    ])
-    [’α, ’a, ’b, ’h],
+    ]),
     α◆𝒰 ⇨ a◆’α ⇨ b◆’α ⇨ h◆(eq ’a ’b ’α) ⇨ eq ’b ’a ’α)
 
 #guard ch eq_symm
 
 /-- a = b → b = c → a = c -/
 def eq_trans :=
-  (la
+  (la [’α, ’a, ’b, ’c, ’hab, ’hbc]
     (apb eq_rec [
       ’α, ’b,
-      la (eq ’a ’x ’α) [’x, ’h],
+      la [’x, ’h] (eq ’a ’x ’α),
       ’hab, ’c, ’hbc
-    ])
-    [’α, ’a, ’b, ’c, ’hab, ’hbc],
+    ]),
     α◆𝒰 ⇨ a◆’α ⇨ b◆’α ⇨ c◆’α ⇨ hab◆(eq ’a ’b ’α) ⇨ hbc◆(eq ’b ’c ’α) ⇨ eq ’a ’c ’α)
 
 #guard ch eq_trans
 
 /-- n = m → suc n = suc m -/
 def cong_suc :=
-  (la
+  (la [’n, ’m, ’h]
     (apr rw [
       ℕ, ’n, ’m,
-      la (eq (suc ’n) (suc ’x) ℕ) [’x],
+      la [’x] (eq (suc ’n) (suc ’x) ℕ),
       ’h, apb refl [ℕ, suc ’n]
-    ])
-    [’n, ’m, ’h],
+    ]),
     n◆ℕ ⇨ m◆ℕ ⇨ h◆(eq ’n ’m ℕ) ⇨ eq (suc ’n) (suc ’m) ℕ)
 
 #guard ch cong_suc
 
 /-- n = m → k + n = k + m -/
 def cong_add_l :=
-  (la
+  (la [’n, ’m, ’k, ’h]
     (apr rw [
       ℕ, ’n, ’m,
-      la (eq (add ’k ’n) (add ’k ’x) ℕ) [’x],
+      la [’x] (eq (add ’k ’n) (add ’k ’x) ℕ),
       ’h, apb refl [ℕ, add ’k ’n]
-    ])
-    [’n, ’m, ’k, ’h],
+    ]),
     n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ h◆(eq ’n ’m ℕ) ⇨ eq (add ’k ’n) (add ’k ’m) ℕ)
 
 #guard ch cong_add_l
 
 /-- n = m → n + k = m + k -/
 def cong_add_r :=
-  (la
+  (la [’n, ’m, ’k, ’h]
     (apr rw [
       ℕ, ’n, ’m,
-      la (eq (add ’n ’k) (add ’x ’k) ℕ) [’x],
+      la [’x] (eq (add ’n ’k) (add ’x ’k) ℕ),
       ’h, apb refl [ℕ, add ’n ’k]
-    ])
-    [’n, ’m, ’k, ’h],
+    ]),
     n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ h◆(eq ’n ’m ℕ) ⇨ eq (add ’n ’k) (add ’m ’k) ℕ)
 
 #guard ch cong_add_r
 
 /-- n = 0 + n -/
 def zero_add :=
-  (la
+  (la [’n]
     (apb nat_rec [
-      la (eq ’n (add zero ’n) ℕ) [’n], apb refl [ℕ, zero],
-      la
+      la [’n] (eq ’n (add zero ’n) ℕ), apb refl [ℕ, zero],
+      la [’n, ’h]
         (apr rw [
           ℕ, ’n, add zero ’n,
-          la (eq (add ’n one) (add ’m one) ℕ) [’m],
+          la [’m] (eq (add ’n one) (add ’m one) ℕ),
           ’h, apb refl [ℕ, add ’n one]
-        ])
-        [’n, ’h],
+        ]),
       ’n
-    ])
-    [’n],
+    ]),
     n◆ℕ ⇨ eq ’n (add zero ’n) ℕ)
 
 #guard ch zero_add
 
 /-- n + 0 = 0 + n -/
 def add_zero_eq_zero_add :=
-  (la
-    (apr zero_add [’n])
-    [’n],
+  (la [’n]
+    (apr zero_add [’n]),
     n◆ℕ ⇨ eq (add ’n zero) (add zero ’n) ℕ)
 
 #guard ch add_zero_eq_zero_add
 
 /-- suc (m + n) = (suc m) + n -/
 def succ_add :=
-  (la
+  (la [’m, ’n]
     (apb nat_rec [
-      la (eq (suc (add ’m ’n)) (add (suc ’m) ’n) ℕ) [’n],
+      la [’n] (eq (suc (add ’m ’n)) (add (suc ’m) ’n) ℕ),
       apb refl [ℕ, suc ’m],
-      la
+      la [’n, ’h]
         (apr rw [
           ℕ, suc (add ’m ’n), add (suc ’m) ’n,
-          la (eq (suc (suc (add ’m ’n))) (suc ’x) ℕ) [’x],
+          la [’x] (eq (suc (suc (add ’m ’n))) (suc ’x) ℕ),
           ’h, apb refl [ℕ, suc (suc (add ’m ’n))]
-        ])
-        [’n, ’h],
+        ]),
       ’n
-    ])
-    [’m, ’n],
+    ]),
     m◆ℕ ⇨ n◆ℕ ⇨ eq (suc (add ’m ’n)) (add (suc ’m) ’n) ℕ)
 
 #guard ch succ_add
 
 /-- n + m = m + n -/
 def add_comm :=
-  (la
+  (la [’n, ’m]
     (apb nat_rec [
-      la (eq (add ’n ’m) (add ’m ’n) ℕ) [’m],
+      la [’m] (eq (add ’n ’m) (add ’m ’n) ℕ),
       apr add_zero_eq_zero_add [’n],
-      la
+      la [’m, ’h]
         (apr rw [
           ℕ, suc (add ’m ’n), add (suc ’m) ’n,
-          la (eq (suc (add ’n ’m)) ’x ℕ) [’x],
+          la [’x] (eq (suc (add ’n ’m)) ’x ℕ),
           apr succ_add [’m, ’n],
           apr rw [
             ℕ, add ’n ’m, add ’m ’n,
-            la (eq (suc (add ’n ’m)) (suc ’x) ℕ) [’x],
+            la [’x] (eq (suc (add ’n ’m)) (suc ’x) ℕ),
             ’h, apb refl [ℕ, suc (add ’n ’m)]
           ]
-        ])
-        [’m, ’h],
+        ]),
       ’m
-    ])
-    [’n, ’m],
+    ]),
     n◆ℕ ⇨ m◆ℕ ⇨ eq (add ’n ’m) (add ’m ’n) ℕ)
 
 #guard ch add_comm
 
 /-- n + (m + k) = (n + m) + k -/
 def add_assoc :=
-  (la
+  (la [’n, ’m, ’k]
     (apb nat_rec [
-      la (eq (add ’n (add ’m ’k)) (add (add ’n ’m) ’k) ℕ) [’k],
+      la [’k] (eq (add ’n (add ’m ’k)) (add (add ’n ’m) ’k) ℕ),
       apb refl [ℕ, add ’n ’m],
-      la
+      la [’k, ’h]
         (apr rw [
           ℕ, add ’n (add ’m ’k), add (add ’n ’m) ’k,
-          la (eq (suc (add ’n (add ’m ’k))) (suc ’x) ℕ) [’x],
+          la [’x] (eq (suc (add ’n (add ’m ’k))) (suc ’x) ℕ),
           ’h, apb refl [ℕ, suc (add ’n (add ’m ’k))]
-        ])
-        [’k, ’h],
+        ]),
       ’k
-    ])
-    [’n, ’m, ’k],
+    ]),
     n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ eq (add ’n (add ’m ’k)) (add (add ’n ’m) ’k) ℕ)
 
 #guard ch add_assoc
 
 /-- Predecessor -/
 def pred :=
-  (apb nat_rec [const ℕ, zero, la ’n [’n, ’m]],
+  (apb nat_rec [const ℕ, zero, la [’n, ’m] ’n],
     n◆ℕ ⇨ ℕ)
 
 #guard ch pred
 
 /-- Subtraction -/
 def subt :=
-  (la
-    (apb nat_rec [const ℕ, ’n, la (apr pred [’m]) [’k, ’m]])
-    [’n],
+  (la [’n]
+    (apb nat_rec [
+      const ℕ, ’n, la [’k, ’m] (apr pred [’m])
+    ]),
     n◆ℕ ⇨ ℕ ⇨ ℕ)
 
 #guard ch subt
@@ -936,9 +913,10 @@ def two_minus_four_eq_zero :=
 
 /-- Multiplication -/
 def mul' :=
-  (la
-    (apb nat_rec [const ℕ, zero, la (add ’n ’m) [’k, ’m]])
-    [’n],
+  (la [’n]
+    (apb nat_rec [
+      const ℕ, zero, la [’k, ’m] (add ’n ’m)
+    ]),
     n◆ℕ ⇨ ℕ ⇨ ℕ)
 
 #guard ch mul'
@@ -960,31 +938,29 @@ def four_times_four_eq_sixteen :=
 
 /-- 0 * n = 0 -/
 def zero_mul :=
-  (la
+  (la [’n]
     (apb nat_rec [
-      la (eq (mul zero ’n) zero ℕ) [’n],
+      la [’n] (eq (mul zero ’n) zero ℕ),
       apb refl [ℕ, zero],
-      la
+      la [’n, ’h]
         (apr rw [
           ℕ, zero, mul zero ’n,
-          la (eq (add zero ’m) zero ℕ) [’m],
+          la [’m] (eq (add zero ’m) zero ℕ),
           apr eq_symm [ℕ, mul zero ’n, zero, ’h], apb refl [ℕ, zero]
-        ])
-        [’n, ’h],
+        ]),
       ’n
-    ])
-    [’n],
+    ]),
     n◆ℕ ⇨ eq (mul zero ’n) zero ℕ)
 
 #guard ch zero_mul
 
 /-- (suc m) * n = n + m * n -/
 def succ_mul :=
-  (la
+  (la [’m, ’n]
     (apb nat_rec [
-      la (eq (mul (suc ’m) ’n) (add ’n (mul ’m ’n)) ℕ) [’n],
+      la [’n] (eq (mul (suc ’m) ’n) (add ’n (mul ’m ’n)) ℕ),
       apb refl [ℕ, zero],
-      la
+      la [’n, ’ih]
         (apr eq_trans [
           ℕ, add (suc ’m) (mul (suc ’m) ’n),
           add (suc ’m) (add ’n (mul ’m ’n)),
@@ -1033,33 +1009,29 @@ def succ_mul :=
               ]
             ]
           ]
-        ])
-        [’n, ’ih],
+        ]),
       ’n
-    ])
-    [’m, ’n],
+    ]),
     m◆ℕ ⇨ n◆ℕ ⇨ eq (mul (suc ’m) ’n) (add ’n (mul ’m ’n)) ℕ)
 
 -- This proof takes a long time to check
 -- #guard ch succ_mul
 
 def mul_comm :=
-  (la
+  (la [’n, ’m]
     (apb nat_rec [
-      la (eq (mul ’n ’m) (mul ’m ’n) ℕ) [’m],
+      la [’m] (eq (mul ’n ’m) (mul ’m ’n) ℕ),
       apr eq_symm [ℕ, mul zero ’n, zero, apr zero_mul [’n]],
-      la
+      la [’m, ’ih]
         (apr eq_trans [
           ℕ, add ’n (mul ’n ’m), add ’n (mul ’m ’n), mul (suc ’m) ’n,
           apr cong_add_l [mul ’n ’m, mul ’m ’n, ’n, ’ih],
           apr eq_symm [
             ℕ, mul (suc ’m) ’n, add ’n (mul ’m ’n), apr succ_mul [’m, ’n]
           ]
-        ])
-        [’m, ’ih],
+        ]),
       ’m
-    ])
-    [’n, ’m],
+    ]),
     n◆ℕ ⇨ m◆ℕ ⇨ eq (mul ’n ’m) (mul ’m ’n) ℕ)
 
 -- This proof takes a long time to check
@@ -1067,12 +1039,11 @@ def mul_comm :=
 
 /-- Factorial function -/
 def fac :=
-  (la
+  (la [’n]
     (apb nat_rec [
       const ℕ, one,
-      la (mul (add one ’n) ’nf) [’n, ’nf], ’n
-    ])
-    [’n],
+      la [’n, ’nf] (mul (add one ’n) ’nf), ’n
+    ]),
     n◆ℕ ⇨ ℕ)
 
 #guard ch fac
@@ -1088,33 +1059,30 @@ def nat_pair := prod ℕ (const ℕ)
 
 /-- Get second element of `nat_pair` -/
 def nat_snd :=
-  (la
+  (la [’p]
     (apb prod_rec [
-      ℕ, const ℕ, const ℕ, la ’b [’a, ’b], ’p
-    ])
-    [’p],
+      ℕ, const ℕ, const ℕ, la [’a, ’b] ’b, ’p
+    ]),
     p◆nat_pair ⇨ ℕ)
 
 #guard ch nat_snd
 
 /-- Fibonacci function -/
 def fib :=
-  (la
+  (la [’n]
     (apr fst [
       ℕ, const ℕ,
       apb nat_rec [
         const nat_pair, apb pmk [ℕ, const ℕ, zero, one],
-        la
+        la [’n, ’nf]
           (apb pmk [
             ℕ, const ℕ,
             apr nat_snd [’nf],
             add (apr fst [ℕ, const ℕ, ’nf]) (apr nat_snd [’nf])
-          ])
-          [’n, ’nf],
+          ]),
         ’n
       ]
-    ])
-    [’n],
+    ]),
     n◆ℕ ⇨ ℕ)
 
 #guard ch fib
@@ -1128,11 +1096,10 @@ def fib_four_plus_two_eq_four_times_two :=
 
 /-- Exponentiation -/
 def pow' :=
-  (la
+  (la [’n]
     (apb nat_rec [
-      const ℕ, one, la (mul ’n ’m) [’k, ’m]
-    ])
-    [’n],
+      const ℕ, one, la [’k, ’m] (mul ’n ’m)
+    ]),
     n◆ℕ ⇨ ℕ ⇨ ℕ)
 
 #guard ch pow'
