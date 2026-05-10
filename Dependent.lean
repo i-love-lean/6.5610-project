@@ -382,6 +382,15 @@ def Term.dbtype
   | fls_rec => dbtypes[15]
   | t => name "bad"
 
+/-- Apply built-in function -/
+def apb f := ap f f.btype
+
+/-- Apply a function and type pair -/
+def apr (p : Term × Term) := ap p.1 p.2
+
+/-- Lambda that returns a constant -/
+def const b := la [’unused] b
+
 /-
 ## The type checker
 
@@ -510,14 +519,6 @@ def ch (p : Term × Term) :=
   let t := dbify [] p.1
   let τ := dbify [] p.2
   check [] τ 𝒰₁ && check [] t τ
-
-/-- Apply built-in function -/
-def apb f := ap f f.btype
-
-/-- Apply a function and type pair -/
-def apr (p : Term × Term) := ap p.1 p.2
-
-def const b := la [’unused] b
 
 /-
 ## Exporting proofs
@@ -1093,6 +1094,11 @@ def fib_four_plus_two_eq_four_times_two :=
     eq (apr fib [add four two]) (mul four two) ℕ)
 
 #guard ch fib_four_plus_two_eq_four_times_two
+
+/-- ∀ n m, ¬2 * n * n = m * m -/
+def sqrt_two_irrational :=
+  (name "sorry",
+    n◆ℕ ⇨ m◆ℕ ⇨ eq (mul two (mul ’n ’n)) (mul ’m ’m) ℕ ⇨ ⊥)
 
 /-- Exponentiation -/
 def pow' :=
