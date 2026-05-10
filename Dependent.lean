@@ -6,7 +6,7 @@ import Std.Data.ExtHashSet
 
 A very simple proof assistant in 1000 lines of code!
 
-μLean's type system is based on the calculus of constructions and very similar to Lean (obviously), but with fewer features to make the implementation simpler. μLean does not have general inductive types and instead has a few hardcoded inductive types such as the natural numbers. Additionally, μLean only has two cumulative universes, since stuff above `Type 1` is rarely used in practice anyways. To avoid paradoxes, `Type 1` in μLean does not have a type. Propositions in μLean live in `Type` instead of a dedicated `Prop` universe, which avoids a lot of Lean's `Prop` weirdness.
+μLean's type system is based on the calculus of constructions and very similar to Lean (obviously), but with fewer features to make the implementation simpler. μLean does not have general inductive types and instead has a few hardcoded inductive types such as the natural numbers. Additionally, μLean has cumulative universes rather than noncumulative universes and propositions in μLean live in `Type` instead of a dedicated `Prop` universe, which avoids a lot of Lean's `Prop` weirdness.
 
 ## Basic definitions
 -/
@@ -21,7 +21,7 @@ inductive Term
   | app (f φ a : Term)
   -- Types
   /-- Type universes -/
-  | typ (u : Fin 2)
+  | typ (u : Nat)
   /-- Dependent function type -/
   | fn (α β : Term)
   -- Inductive types
@@ -277,6 +277,12 @@ def ap (f : Term) : Term → List Term → Term
   | _, _ =>
     f
 
+/-- Apply a function and type pair -/
+def apr (p : Term × Term) := ap p.1 p.2
+
+/-- Lambda that returns a constant -/
+def const b := la [’unused] b
+
 /-- Convert from variable names to de Bruijn indices -/
 def dbify (names : List String) : Term → Term
   | lam b =>
@@ -310,8 +316,8 @@ Now that are vernacular is ready, we'll generate the types of the built-in funct
 /-- Get type of built-in functions (basically a direct translation of the type signatures of the equivalent functions in Lean) -/
 def Term.btype (t : Term) :=
   match t with
-  | 𝒰 =>
-    𝒰₁
+  | typ u =>
+    typ (u + 1)
   | pmk =>
     α◆𝒰 ⇨ β◆(’α ⇨ 𝒰) ⇨ a◆’α ⇨ ap ’β (’α ⇨ 𝒰) [’a] ⇨ prod ’α ’β
   | prod_rec =>
@@ -336,7 +342,8 @@ def Term.btype (t : Term) :=
   | succ =>
     ℕ ⇨ ℕ
   | nat_rec =>
-    let μ := ℕ ⇨ 𝒰
+    -- We use `𝒰₁` instead of `𝒰` to allow for large elimination (used by `succ_ne_zero`)
+    let μ := ℕ ⇨ 𝒰₁
     m◆μ ⇨ z◆(ap ’m μ [zero]) ⇨ s◆(n◆ℕ ⇨ ap ’m μ [’n] ⇨ ap ’m μ [ap succ succ.btype [’n]]) ⇨ t◆ℕ ⇨ ap ’m μ [’t]
   | unit =>
     𝒰
@@ -358,38 +365,32 @@ open Lean Elab Term in
 /-- Compute `dbtype` at compile-time -/
 elab "precompute_dbtypes" : term => do
   return toExpr <|
-    [𝒰, pmk, prod_rec, inl, inr, sum_rec, refl, eq_rec, ℕ, zero, succ, nat_rec, unit, intro, ⊥, fls_rec].map (dbify [] ·.btype)
+    [pmk, prod_rec, inl, inr, sum_rec, refl, eq_rec, ℕ, zero, succ, nat_rec, unit, intro, ⊥, fls_rec].map (dbify [] ·.btype)
 
 def dbtypes := precompute_dbtypes
 
 /-- Yeah I know this is inelegant but idk the dark arts of metaprogramming -/
 def Term.dbtype
-  | 𝒰 => dbtypes[0]
-  | pmk => dbtypes[1]
-  | prod_rec => dbtypes[2]
-  | inl => dbtypes[3]
-  | inr => dbtypes[4]
-  | sum_rec => dbtypes[5]
-  | refl => dbtypes[6]
-  | eq_rec => dbtypes[7]
-  | ℕ => dbtypes[8]
-  | zero => dbtypes[9]
-  | succ => dbtypes[10]
-  | nat_rec => dbtypes[11]
-  | unit => dbtypes[12]
-  | intro => dbtypes[13]
-  | ⊥ => dbtypes[14]
-  | fls_rec => dbtypes[15]
+  | typ u => typ (u + 1)
+  | pmk => dbtypes[0]
+  | prod_rec => dbtypes[1]
+  | inl => dbtypes[2]
+  | inr => dbtypes[3]
+  | sum_rec => dbtypes[4]
+  | refl => dbtypes[5]
+  | eq_rec => dbtypes[6]
+  | ℕ => dbtypes[7]
+  | zero => dbtypes[8]
+  | succ => dbtypes[9]
+  | nat_rec => dbtypes[10]
+  | unit => dbtypes[11]
+  | intro => dbtypes[12]
+  | ⊥ => dbtypes[13]
+  | fls_rec => dbtypes[14]
   | t => name "bad"
 
 /-- Apply built-in function -/
 def apb f := ap f f.btype
-
-/-- Apply a function and type pair -/
-def apr (p : Term × Term) := ap p.1 p.2
-
-/-- Lambda that returns a constant -/
-def const b := la [’unused] b
 
 /-
 ## The type checker
@@ -461,8 +462,9 @@ partial def eval : Term → Term
     t
 
 /-- Equality, where cumulative universes are considered equal -/
-def cumeq a a' :=
-  (a == 𝒰 && a' == 𝒰₁) || a == eval a'
+def cumeq : Term → Term → Bool
+  | typ u, typ u' => u ≤ u'
+  | a, a' => a == eval a'
 
 /-- And finally, the type checker! (the second input term should be well-typed) -/
 def check (env : List Term) : Term → Term → Bool
@@ -482,9 +484,6 @@ def check (env : List Term) : Term → Term → Bool
     check env α (typ u) && check env β (typ u)
   | eq a a' α, typ u =>
     check env a α && check env a' α && check env α (typ u)
-  | 𝒰₁, _ =>
-    -- Prevent Girard's paradox
-    false
   | t, τ =>
     cumeq t.dbtype τ
 
@@ -503,22 +502,24 @@ def check (env : List Term) : Term → Term → Bool
 
 #guard check [] eq_rec.dbtype 𝒰₁
 
-#guard check [] nat_rec.dbtype 𝒰₁
+#guard check [] nat_rec.dbtype (typ 2)
 
 #guard check [] fls_rec.dbtype 𝒰₁
 
 #guard !check [] 𝒰₁ 𝒰₁
 
+#guard !check [] 𝒰₁ 𝒰
+
 #guard !check [] (prod 𝒰 𝒰) (prod 𝒰 𝒰)
 
--- TODO: This should pass the type check?
+-- TODO: This should pass the type checker?
 -- #guard check [] (dbify [] (f◆(ℕ ⇨ ℕ ⇨ 𝒰) ⇨ n◆ℕ ⇨ (ap ’f (ℕ ⇨ ℕ ⇨ 𝒰) [’n]))) 𝒰₁
 
 /-- User-facing type checker -/
 def ch (p : Term × Term) :=
   let t := dbify [] p.1
   let τ := dbify [] p.2
-  check [] τ 𝒰₁ && check [] t τ
+  check [] τ (typ 2) && check [] t τ
 
 /-
 ## Exporting proofs
@@ -822,7 +823,7 @@ def add_zero_eq_zero_add :=
 
 #guard ch add_zero_eq_zero_add
 
-/-- suc (m + n) = (suc m) + n -/
+/-- succ (m + n) = (succ m) + n -/
 def succ_add :=
   (la [’m, ’n]
     (apb nat_rec [
@@ -955,7 +956,7 @@ def zero_mul :=
 
 #guard ch zero_mul
 
-/-- (suc m) * n = n + m * n -/
+/-- (succ m) * n = n + m * n -/
 def succ_mul :=
   (la [’m, ’n]
     (apb nat_rec [
@@ -1095,10 +1096,22 @@ def fib_four_plus_two_eq_four_times_two :=
 
 #guard ch fib_four_plus_two_eq_four_times_two
 
-/-- ∀ n m, ¬2 * n * n = m * m -/
+/-- Zero is not a successor of any number -/
+def succ_ne_zero :=
+  (la [’n, ’h]
+    (apr rw [
+      ℕ, suc ’n, zero,
+      apb nat_rec [const 𝒰, ⊥, la [’k, ’v] unit],
+      ’h, intro
+    ]),
+    n◆ℕ ⇨ h◆(eq (suc ’n) zero ℕ) ⇨ ⊥)
+
+#guard ch succ_ne_zero
+
+/-- √2 is irrational -/
 def sqrt_two_irrational :=
   (name "sorry",
-    n◆ℕ ⇨ m◆ℕ ⇨ eq (mul two (mul ’n ’n)) (mul ’m ’m) ℕ ⇨ ⊥)
+    n◆ℕ ⇨ m◆ℕ ⇨ hm◆(eq ’m zero ℕ ⇨ ⊥) ⇨ h◆(eq (mul two (mul ’n ’n)) (mul ’m ’m) ℕ) ⇨ ⊥)
 
 /-- Exponentiation -/
 def pow' :=
