@@ -8,4 +8,3 @@ root = "Main"
 [[lean_exe]]
 name = "dependent"
 root = "Dependent"
-
