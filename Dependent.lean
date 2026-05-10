@@ -362,7 +362,7 @@ elab "precompute_dbtypes" : term => do
 
 def dbtypes := precompute_dbtypes
 
-/-- Yeah I know this is inelegant but metaprogramming is too dark magic for me -/
+/-- Yeah I know this is inelegant but idk the dark arts of metaprogramming -/
 def Term.dbtype
   | 𝒰 => dbtypes[0]
   | pmk => dbtypes[1]
@@ -977,12 +977,12 @@ def succ_mul :=
               ℕ, add (add (suc ’m) ’n) (mul ’m ’n),
               add (suc (add ’m ’n)) (mul ’m ’n),
               add (suc ’n) (add ’m (mul ’m ’n)),
-              apr cong_add_r
-                [add (suc ’m) ’n, suc (add ’m ’n), mul ’m ’n,
-                  apr eq_symm [
-                    ℕ, suc (add ’m ’n), add (suc ’m) ’n, apr succ_add [’m, ’n]
-                  ]
-                ],
+              apr cong_add_r [
+                add (suc ’m) ’n, suc (add ’m ’n), mul ’m ’n,
+                apr eq_symm [
+                  ℕ, suc (add ’m ’n), add (suc ’m) ’n, apr succ_add [’m, ’n]
+                ]
+              ],
               apr eq_trans [
                 ℕ, add (suc (add ’m ’n)) (mul ’m ’n),
                 add (suc (add ’n ’m)) (mul ’m ’n),
