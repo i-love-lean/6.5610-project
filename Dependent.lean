@@ -81,7 +81,7 @@ open Term
 
 -- Some helpful macros
 -- `infixr` doesn't work at compile time or something oof
-notation α " ⇨ " β => fn α β -- \hey
+notation α " ⇨ " β => fn α β -- \hey (stands for \heyting because you will be heyting your life when you write μLean)
 notation "𝒰" => typ 0 -- \McU
 notation "𝒰₁" => typ 1 -- \McU\1
 notation "ℕ" => nat -- \N
@@ -673,7 +673,7 @@ def four := suc (suc two)
 def add' :=
   (la
     (apb nat_rec [
-      const ℕ, ’n, la (suc ’m) [’n, ’m]
+      const ℕ, ’n, la (suc ’m) [’k, ’m]
     ])
     [’n],
     n◆ℕ ⇨ ℕ ⇨ ℕ)
@@ -904,6 +904,36 @@ def add_assoc :=
 
 #guard ch add_assoc
 
+/-- Predecessor -/
+def pred :=
+  (apb nat_rec [const ℕ, zero, la ’n [’n, ’m]],
+    n◆ℕ ⇨ ℕ)
+
+#guard ch pred
+
+/-- Subtraction -/
+def subt :=
+  (la
+    (apb nat_rec [const ℕ, ’n, la (apr pred [’m]) [’k, ’m]])
+    [’n],
+    n◆ℕ ⇨ ℕ ⇨ ℕ)
+
+#guard ch subt
+
+/-- 4 - 2 = 2 -/
+def four_minus_two_eq_two :=
+  (apb refl [ℕ, two],
+    eq (apr subt [four, two]) two ℕ)
+
+#guard ch four_minus_two_eq_two
+
+/-- 2 - 4 = 0 -/
+def two_minus_four_eq_zero :=
+  (apb refl [ℕ, zero],
+    eq (apr subt [two, four]) zero ℕ)
+
+#guard ch two_minus_four_eq_zero
+
 /-- Multiplication -/
 def mul' :=
   (la
@@ -914,6 +944,19 @@ def mul' :=
 #guard ch mul'
 
 def mul n m := apr mul' [n, m]
+
+/-- 16 exists -/
+def sixteen :=
+  suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc four)))))))))))
+
+#guard ch (sixteen, ℕ)
+
+/-- 4 * 4 = 16 -/
+def four_times_four_eq_sixteen :=
+  (apb refl [ℕ, sixteen],
+    eq (mul four four) sixteen ℕ)
+
+#guard ch four_times_four_eq_sixteen
 
 /-- 0 * n = 0 -/
 def zero_mul :=
@@ -1021,19 +1064,6 @@ def mul_comm :=
 
 -- This proof takes a long time to check
 -- #guard ch mul_comm
-
-/-- 16 exists -/
-def sixteen :=
-  suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc four)))))))))))
-
-#guard ch (sixteen, ℕ)
-
-/-- 4 * 4 = 16 -/
-def four_times_four_eq_sixteen :=
-  (apb refl [ℕ, sixteen],
-    eq (mul four four) sixteen ℕ)
-
-#guard ch four_times_four_eq_sixteen
 
 /-- Factorial function -/
 def fac :=
