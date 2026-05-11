@@ -4,7 +4,7 @@ import Std.Data.ExtHashSet
 /-
 # μLean
 
-A very simple proof assistant in 1000 lines of code!
+From 0 to √2 is irrational in less than 2000 lines of code! Inclues an elaborator, type checker, and lots of example proofs.
 
 μLean's type system is based on the calculus of constructions and very similar to Lean (obviously), but with fewer features to make the implementation simpler. μLean does not have general inductive types and instead has a few hardcoded inductive types such as the natural numbers. Additionally, μLean has cumulative universes rather than noncumulative universes and propositions in μLean live in `Type` instead of a dedicated `Prop` universe, which avoids a lot of Lean's `Prop` weirdness.
 
@@ -74,18 +74,20 @@ deriving BEq, ReflBEq, LawfulBEq, Lean.ToExpr
 open Term
 
 /-
-## Syntactic sugar
+## Elaborator
 
-μLean satisfies the de Bruijn criterion, which means that we use Lean as a metalanguage and write proofs in a high-level vernacular that gets desugared down to a low-level AST for the type checker. This keeps the type checker itself simple.
+μLean satisfies the de Bruijn criterion, which means that we use Lean as a metalanguage and write proofs in a high-level vernacular that gets elaborated (desugared) down to a low-level AST for the type checker. This keeps the type checker itself simple.
 -/
 
 -- Some helpful macros
 -- `infixr` doesn't work at compile time or something oof
-notation α " ⇨ " β => fn α β -- \hey (stands for \heyting because you will be heyting your life when you write μLean)
+notation:40 α " ⇨ " β => fn α β -- \hey (stands for \heyting because you will be heyting your life when you write μLean)
 notation "𝒰" => typ 0 -- \McU
 notation "𝒰₁" => typ 1 -- \McU\1
 notation "ℕ" => nat -- \N
 notation "⊥" => fls -- \bo
+-- Higher precedence than `⇨` but lower precedence than arithmetic
+notation:50 n:51 " =ₙ " m:51 => eq n m ℕ -- =\_n P
 -- `max` fixes some precedence issues when parsing
 syntax ident "◆" term:max " ⇨ " term : term -- \di
 macro_rules
@@ -131,59 +133,12 @@ def free (s : String) : Term → Bool
   | _ =>
     false
 
-/-- Collect all names used in a term -/
-def names : Term → Std.ExtHashSet String
-  | lam b =>
-    names b
-  | app f φ a =>
-    names f ∪ names φ ∪ names a
-  | α ⇨ β
-  | prod α β
-  | sum α β =>
-    names α ∪ names β
-  | eq a a' α =>
-    names a ∪ names a' ∪ names α
-  | name s =>
-    {s}
-  | vlam s b =>
-    {s} ∪ names b
-  | vfn s α β =>
-    {s} ∪ names α ∪ names β
-  | _ =>
-    ∅
-
-/-- Generate a name not in a set -/
-def gensym (S : Std.ExtHashSet String) := Id.run do
-  for i in List.range (S.size + 1) do
-    if toString i ∉ S then
-      return toString i
-  return ""
-
-open Std Do ExtHashSet in
-/-- `gensym` returns a string not in its input set -/
-theorem gensym_correct : gensym S ∉ S := by
-  generalize h : gensym S = x
-  apply Id.of_wp_run_eq h
-  mvcgen invariants
-  · Invariant.withEarlyReturn
-      (onReturn := fun ret _ ↦ ⌜ret ∉ S⌝)
-      (onContinue := fun xs _ ↦ ⌜∀ i < xs.prefix.length, toString i ∈ S⌝)
-  with (expose_names; try grind)
-  · left
-    simp_all
-    intro i hi
-    by_cases h : i = pref.length
-    · grind [congrArg (·[pref.length]?) h_1]
-    · exact h_3.2 i (by grind)
-  · let T := List.range (List.range (S.size + 1) |>.length) |>.map toString
-    have : S ∪ ofList T = S := by
-      ext i -- This is why we need `ExtHashSet` instead of just `HashSet`
-      constructor
-      · simp_all
-        grind
-      · simp_all
-    have : (ofList T).size = T.length := size_ofList (by simp [List.pairwise_iff_getElem, T]; grind)
-    grind [size_right_le_size_union]
+/-- Generate a name not free in `t` or `t'` -/
+def gensym (s : String) (t t' : Term) : Id String := do
+  let mut i := 0
+  while let s' := s ++ toString i; free s' t || free s' t' do
+    i := i + 1
+  return s ++ toString i
 
 /-- Rename free occurrences of `s₁` to `s₂`, respecting scoping -/
 def rename (s₁ s₂ : String) : Term → Term
@@ -250,7 +205,7 @@ def subca (s : String) (t' t : Term) :=
     if s' == s then
       vlam s' b
     else if free s' t' then
-      let fresh := gensym (names t' ∪ names b ∪ {s})
+      let fresh := gensym s b t'
       vlam fresh (subca s t' (rename s' fresh b))
     else
       vlam s' (subca s t' b)
@@ -258,7 +213,7 @@ def subca (s : String) (t' t : Term) :=
     if s' == s then
       vfn s' (subca s t' α) β
     else if free s' t' then
-      let fresh := gensym (names β ∪ names t' ∪ {s})
+      let fresh := gensym s β t'
       vfn fresh (subca s t' α) (subca s t' (rename s' fresh β))
     else
       vfn s' (subca s t' α) (subca s t' β)
@@ -278,7 +233,7 @@ def ap (f : Term) : Term → List Term → Term
     f
 
 /-- Apply a function and type pair -/
-def apr (p : Term × Term) := ap p.1 p.2
+def ar (p : Term × Term) := ap p.1 p.2
 
 /-- Lambda that returns a constant -/
 def const b := la [’unused] b
@@ -390,7 +345,7 @@ def Term.dbtype
   | t => name "bad"
 
 /-- Apply built-in function -/
-def apb f := ap f f.btype
+def ab f := ap f f.btype
 
 /-
 ## The type checker
@@ -522,6 +477,7 @@ partial def check (env : List Term) : Term → Term → Bool
 def ch (p : Term × Term) :=
   let t := dbify [] p.1
   let τ := dbify [] p.2
+  -- We don't really care about universes above 2 so just hardcode this for simplicity
   check [] τ (typ 2) && check [] t τ
 
 /-
@@ -562,7 +518,7 @@ def serialize (p : Term × Term) :=
   s!"'({dbify [] p.1 |>.toString} . {dbify [] p.2 |>.toString})"
 
 -- Hardcode this into external proof checkers
-#eval toString <$> dbtypes
+-- #eval toString <$> dbtypes
 
 /-
 ## Proving some stuff
@@ -578,19 +534,19 @@ def a_imp_a :=
 /-- A → B → A ∧ B -/
 def a_imp_b_imp_ab :=
   (la [’α, ’β]
-    (apb pmk [’α, const ’β]),
+    (ab pmk [’α, const ’β]),
     α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ ’β ⇨ prod ’α (const ’β))
 
 /-- A → B → B ∧ A -/
 def a_imp_b_imp_ba :=
   (la [’α, ’β, ’a, ’b]
-    (apb pmk [’β, const ’α, ’b, ’a]),
+    (ab pmk [’β, const ’α, ’b, ’a]),
     α◆𝒰 ⇨ β◆𝒰 ⇨ a◆’α ⇨ b◆’β ⇨ prod ’β (const ’α))
 
 /-- Get first element of product -/
 def fst :=
   (la [’α, ’β, ’p]
-    (apb prod_rec [
+    (ab prod_rec [
       ’α, ’β, const ’α, la [’a, ’b] ’a, ’p
     ]),
     α◆𝒰 ⇨ β◆(’α ⇨ 𝒰) ⇨ p◆(prod ’α ’β) ⇨ ’α)
@@ -599,7 +555,7 @@ def fst :=
 def not_ab_imp_not_a :=
   (la [’α, ’β, ’f, ’a]
     (ap ’f (sum ’α ’β ⇨ ⊥) [
-      apb inl [’α, ’β, ’a]
+      ab inl [’α, ’β, ’a]
     ]),
     α◆𝒰 ⇨ β◆𝒰 ⇨ f◆(sum ’α ’β ⇨ ⊥) ⇨ a◆’α ⇨ ⊥)
 
@@ -617,18 +573,20 @@ def not_not_not_a_imp_not_a :=
     ]),
     α◆𝒰 ⇨ f◆(((’α ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) ⇨ a◆’α ⇨ ⊥)
 
+instance : Zero Term := ⟨zero⟩
+
 /-- ∃ n : ℕ, n = 0 -/
 def exists_n_eq_zero :=
-  (apb pmk [
-    ℕ, la [’n] (eq ’n zero ℕ), zero, apb refl [ℕ, zero]
+  (ab pmk [
+    ℕ, la [’n] (’n =ₙ 0), 0, ab refl [ℕ, 0]
   ],
-    prod ℕ (la [’n] (eq ’n zero ℕ)))
+    prod ℕ (la [’n] (’n =ₙ 0)))
 
 /-- ∀ a : A, ∃ b : A, b = a -/
 def forall_a_exists_b_eq_a :=
   (la [’α, ’a]
-    (apb pmk [
-      ’α, la [’b] (eq ’b ’a ’α), ’a, apb refl [’α, ’a]
+    (ab pmk [
+      ’α, la [’b] (eq ’b ’a ’α), ’a, ab refl [’α, ’a]
     ]),
     α◆𝒰 ⇨ a◆’α ⇨ prod ’α (la [’b] (eq ’b ’a ’α)))
 
@@ -636,10 +594,12 @@ def forall_a_exists_b_eq_a :=
 def suc n := ap succ (ℕ ⇨ ℕ) [n]
 
 /-- 1 exists (yeah I know this is not super exciting) -/
-def one := suc zero
+def one := suc 0
+
+instance : One Term := ⟨one⟩
 
 /-- 2 exists -/
-def two := suc one
+def two := suc 1
 
 /-- 4 exists -/
 def four := suc (suc two)
@@ -647,27 +607,29 @@ def four := suc (suc two)
 /-- Addition -/
 def add' :=
   (la [’n]
-    (apb nat_rec [
+    (ab nat_rec [
       const ℕ, ’n, la [’k, ’m] (suc ’m)
     ]),
     n◆ℕ ⇨ ℕ ⇨ ℕ)
 
-def add n m := apr add' [n, m]
+def add n m := ar add' [n, m]
+
+instance : Add Term := ⟨add⟩
 
 /-- 0 + 0 = 0 -/
 def zero_plus_zero_eq_zero :=
-  (apb refl [ℕ, zero],
-    eq (add zero zero) zero ℕ)
+  (ab refl [ℕ, 0],
+    0 + 0 =ₙ 0)
 
 /-- 0 + 1 = 0 -/
 def zero_plus_one_eq_one :=
-  (apb refl [ℕ, one],
-    eq (add zero one) one ℕ)
+  (ab refl [ℕ, 1],
+    0 + 1 =ₙ 1)
 
 /-- 2 + 2 = 4 -/
 def two_plus_two_eq_four :=
-  (apb refl [ℕ, four],
-    eq (add two two) four ℕ)
+  (ab refl [ℕ, four],
+    two + two =ₙ four)
 
 /-- Boolean -/
 def bool' := sum unit unit
@@ -675,7 +637,7 @@ def bool' := sum unit unit
 /-- If statement -/
 def if' :=
   (la [’α, ’b, ’a, ’a']
-    (apb sum_rec [
+    (ab sum_rec [
       unit, unit, const ’α, const ’a, const ’a', ’b
     ]),
     α◆𝒰 ⇨ b◆bool' ⇨ a◆’α ⇨ a'◆’α ⇨ ’α)
@@ -683,13 +645,13 @@ def if' :=
 /-- ⊥ implies anything -/
 def false_elim :=
   (la [’α]
-    (apb fls_rec [const ’α]),
+    (ab fls_rec [const ’α]),
     α◆𝒰 ⇨ ⊥ ⇨ ’α)
 
 /-- Rewrite with an equality -/
 def rw :=
   (la [’α, ’a, ’b, ’p, ’h, ’ha]
-    (apb eq_rec [
+    (ab eq_rec [
       ’α, ’a,
       la [’x, ’h] (ap ’p (’α ⇨ 𝒰) [’x]),
       ’ha, ’b, ’h
@@ -699,17 +661,17 @@ def rw :=
 /-- a = b → b = a -/
 def eq_symm :=
   (la [’α, ’a, ’b, ’h]
-    (apb eq_rec [
+    (ab eq_rec [
       ’α, ’a,
       la [’x, ’h] (eq ’x ’a ’α),
-      apb refl [’α, ’a], ’b, ’h
+      ab refl [’α, ’a], ’b, ’h
     ]),
     α◆𝒰 ⇨ a◆’α ⇨ b◆’α ⇨ h◆(eq ’a ’b ’α) ⇨ eq ’b ’a ’α)
 
 /-- a = b → b = c → a = c -/
 def eq_trans :=
   (la [’α, ’a, ’b, ’c, ’hab, ’hbc]
-    (apb eq_rec [
+    (ab eq_rec [
       ’α, ’b,
       la [’x, ’h] (eq ’a ’x ’α),
       ’hab, ’c, ’hbc
@@ -719,139 +681,145 @@ def eq_trans :=
 /-- n = m → suc n = suc m -/
 def cong_suc :=
   (la [’n, ’m, ’h]
-    (apr rw [
+    (ar rw [
       ℕ, ’n, ’m,
-      la [’x] (eq (suc ’n) (suc ’x) ℕ),
-      ’h, apb refl [ℕ, suc ’n]
+      la [’x] (suc ’n =ₙ suc ’x),
+      ’h, ab refl [ℕ, suc ’n]
     ]),
-    n◆ℕ ⇨ m◆ℕ ⇨ h◆(eq ’n ’m ℕ) ⇨ eq (suc ’n) (suc ’m) ℕ)
+    n◆ℕ ⇨ m◆ℕ ⇨ h◆(’n =ₙ ’m) ⇨ suc ’n =ₙ suc ’m)
 
 /-- n = m → k + n = k + m -/
 def cong_add_l :=
   (la [’n, ’m, ’k, ’h]
-    (apr rw [
+    (ar rw [
       ℕ, ’n, ’m,
-      la [’x] (eq (add ’k ’n) (add ’k ’x) ℕ),
-      ’h, apb refl [ℕ, add ’k ’n]
+      la [’x] (’k + ’n =ₙ ’k + ’x),
+      ’h, ab refl [ℕ, ’k + ’n]
     ]),
-    n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ h◆(eq ’n ’m ℕ) ⇨ eq (add ’k ’n) (add ’k ’m) ℕ)
+    n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ h◆(’n =ₙ ’m) ⇨ ’k + ’n =ₙ ’k + ’m)
 
 /-- n = m → n + k = m + k -/
 def cong_add_r :=
   (la [’n, ’m, ’k, ’h]
-    (apr rw [
+    (ar rw [
       ℕ, ’n, ’m,
-      la [’x] (eq (add ’n ’k) (add ’x ’k) ℕ),
-      ’h, apb refl [ℕ, add ’n ’k]
+      la [’x] (’n + ’k =ₙ ’x + ’k),
+      ’h, ab refl [ℕ, ’n + ’k]
     ]),
-    n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ h◆(eq ’n ’m ℕ) ⇨ eq (add ’n ’k) (add ’m ’k) ℕ)
+    n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ h◆(’n =ₙ ’m) ⇨ ’n + ’k =ₙ ’m + ’k)
 
 /-- n = 0 + n -/
 def zero_add :=
   (la [’n]
-    (apb nat_rec [
-      la [’n] (eq ’n (add zero ’n) ℕ), apb refl [ℕ, zero],
+    (ab nat_rec [
+      la [’n] (’n =ₙ 0 + ’n), ab refl [ℕ, 0],
       la [’n, ’h]
-        (apr rw [
-          ℕ, ’n, add zero ’n,
-          la [’m] (eq (add ’n one) (add ’m one) ℕ),
-          ’h, apb refl [ℕ, add ’n one]
+        (ar rw [
+          ℕ, ’n, 0 + ’n,
+          la [’m] (’n + 1 =ₙ ’m + 1),
+          ’h, ab refl [ℕ, ’n + 1]
         ]),
       ’n
     ]),
-    n◆ℕ ⇨ eq ’n (add zero ’n) ℕ)
+    n◆ℕ ⇨ ’n =ₙ 0 + ’n)
 
 /-- n + 0 = 0 + n -/
 def add_zero_eq_zero_add :=
   (la [’n]
-    (apr zero_add [’n]),
-    n◆ℕ ⇨ eq (add ’n zero) (add zero ’n) ℕ)
+    (ar zero_add [’n]),
+    n◆ℕ ⇨ ’n + 0 =ₙ 0 + ’n)
 
 /-- succ (m + n) = (succ m) + n -/
 def succ_add :=
   (la [’m, ’n]
-    (apb nat_rec [
-      la [’n] (eq (suc (add ’m ’n)) (add (suc ’m) ’n) ℕ),
-      apb refl [ℕ, suc ’m],
+    (ab nat_rec [
+      la [’n] (suc (’m + ’n) =ₙ suc ’m + ’n),
+      ab refl [ℕ, suc ’m],
       la [’n, ’h]
-        (apr rw [
-          ℕ, suc (add ’m ’n), add (suc ’m) ’n,
-          la [’x] (eq (suc (suc (add ’m ’n))) (suc ’x) ℕ),
-          ’h, apb refl [ℕ, suc (suc (add ’m ’n))]
+        (ar rw [
+          ℕ, suc (’m + ’n), suc ’m + ’n,
+          la [’x] (suc (suc (’m + ’n)) =ₙ suc ’x),
+          ’h, ab refl [ℕ, suc (suc (’m + ’n))]
         ]),
       ’n
     ]),
-    m◆ℕ ⇨ n◆ℕ ⇨ eq (suc (add ’m ’n)) (add (suc ’m) ’n) ℕ)
+    m◆ℕ ⇨ n◆ℕ ⇨ suc (’m + ’n) =ₙ suc ’m + ’n)
 
 /-- n + m = m + n -/
 def add_comm :=
   (la [’n, ’m]
-    (apb nat_rec [
-      la [’m] (eq (add ’n ’m) (add ’m ’n) ℕ),
-      apr add_zero_eq_zero_add [’n],
+    (ab nat_rec [
+      la [’m] (’n + ’m =ₙ ’m + ’n),
+      ar add_zero_eq_zero_add [’n],
       la [’m, ’h]
-        (apr rw [
-          ℕ, suc (add ’m ’n), add (suc ’m) ’n,
-          la [’x] (eq (suc (add ’n ’m)) ’x ℕ),
-          apr succ_add [’m, ’n],
-          apr rw [
-            ℕ, add ’n ’m, add ’m ’n,
-            la [’x] (eq (suc (add ’n ’m)) (suc ’x) ℕ),
-            ’h, apb refl [ℕ, suc (add ’n ’m)]
+        (ar rw [
+          ℕ, suc (’m + ’n), suc ’m + ’n,
+          la [’x] (suc (’n + ’m) =ₙ ’x),
+          ar succ_add [’m, ’n],
+          ar rw [
+            ℕ, ’n + ’m, ’m + ’n,
+            la [’x] (suc (’n + ’m) =ₙ suc ’x),
+            ’h, ab refl [ℕ, suc (’n + ’m)]
           ]
         ]),
       ’m
     ]),
-    n◆ℕ ⇨ m◆ℕ ⇨ eq (add ’n ’m) (add ’m ’n) ℕ)
+    n◆ℕ ⇨ m◆ℕ ⇨ ’n + ’m =ₙ ’m + ’n)
 
 /-- n + (m + k) = (n + m) + k -/
 def add_assoc :=
   (la [’n, ’m, ’k]
-    (apb nat_rec [
-      la [’k] (eq (add ’n (add ’m ’k)) (add (add ’n ’m) ’k) ℕ),
-      apb refl [ℕ, add ’n ’m],
+    (ab nat_rec [
+      la [’k] (’n + (’m + ’k) =ₙ (’n + ’m) + ’k),
+      ab refl [ℕ, ’n + ’m],
       la [’k, ’h]
-        (apr rw [
-          ℕ, add ’n (add ’m ’k), add (add ’n ’m) ’k,
-          la [’x] (eq (suc (add ’n (add ’m ’k))) (suc ’x) ℕ),
-          ’h, apb refl [ℕ, suc (add ’n (add ’m ’k))]
+        (ar rw [
+          ℕ, ’n + (’m + ’k), (’n + ’m) + ’k,
+          la [’x] (suc (’n + (’m + ’k)) =ₙ suc ’x),
+          ’h, ab refl [ℕ, suc (’n + (’m + ’k))]
         ]),
       ’k
     ]),
-    n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ eq (add ’n (add ’m ’k)) (add (add ’n ’m) ’k) ℕ)
+    n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ ’n + (’m + ’k) =ₙ (’n + ’m) + ’k)
 
 /-- Predecessor -/
 def pred :=
-  (apb nat_rec [const ℕ, zero, la [’n, ’m] ’n],
+  (ab nat_rec [const ℕ, 0, la [’n, ’m] ’n],
     n◆ℕ ⇨ ℕ)
 
 /-- Subtraction -/
-def subt :=
+def subt' :=
   (la [’n]
-    (apb nat_rec [
-      const ℕ, ’n, la [’k, ’m] (apr pred [’m])
+    (ab nat_rec [
+      const ℕ, ’n, la [’k, ’m] (ar pred [’m])
     ]),
     n◆ℕ ⇨ ℕ ⇨ ℕ)
 
+def subt n m := ar subt' [n, m]
+
+instance : Sub Term := ⟨subt⟩
+
 /-- 4 - 2 = 2 -/
 def four_minus_two_eq_two :=
-  (apb refl [ℕ, two],
-    eq (apr subt [four, two]) two ℕ)
+  (ab refl [ℕ, two],
+    four - two =ₙ two)
 
 /-- 2 - 4 = 0 -/
 def two_minus_four_eq_zero :=
-  (apb refl [ℕ, zero],
-    eq (apr subt [two, four]) zero ℕ)
+  (ab refl [ℕ, 0],
+    two - four =ₙ 0)
 
 /-- Multiplication -/
 def mul' :=
   (la [’n]
-    (apb nat_rec [
-      const ℕ, zero, la [’k, ’m] (add ’n ’m)
+    (ab nat_rec [
+      const ℕ, 0, la [’k, ’m] (’n + ’m)
     ]),
     n◆ℕ ⇨ ℕ ⇨ ℕ)
 
-def mul n m := apr mul' [n, m]
+def mul n m := ar mul' [n, m]
+
+instance : Mul Term := ⟨mul⟩
 
 /-- 16 exists -/
 def sixteen :=
@@ -859,75 +827,75 @@ def sixteen :=
 
 /-- 4 * 4 = 16 -/
 def four_times_four_eq_sixteen :=
-  (apb refl [ℕ, sixteen],
-    eq (mul four four) sixteen ℕ)
+  (ab refl [ℕ, sixteen],
+    four * four =ₙ sixteen)
 
 /-- 0 * n = 0 -/
 def zero_mul :=
   (la [’n]
-    (apb nat_rec [
-      la [’n] (eq (mul zero ’n) zero ℕ),
-      apb refl [ℕ, zero],
+    (ab nat_rec [
+      la [’n] (0 * ’n =ₙ 0),
+      ab refl [ℕ, 0],
       la [’n, ’h]
-        (apr rw [
-          ℕ, zero, mul zero ’n,
-          la [’m] (eq (add zero ’m) zero ℕ),
-          apr eq_symm [ℕ, mul zero ’n, zero, ’h], apb refl [ℕ, zero]
+        (ar rw [
+          ℕ, 0, 0 * ’n,
+          la [’m] (0 + ’m =ₙ 0),
+          ar eq_symm [ℕ, 0 * ’n, 0, ’h], ab refl [ℕ, 0]
         ]),
       ’n
     ]),
-    n◆ℕ ⇨ eq (mul zero ’n) zero ℕ)
+    n◆ℕ ⇨ 0 * ’n =ₙ 0)
 
 /-- (succ m) * n = n + m * n -/
 def succ_mul :=
   (la [’m, ’n]
-    (apb nat_rec [
-      la [’n] (eq (mul (suc ’m) ’n) (add ’n (mul ’m ’n)) ℕ),
-      apb refl [ℕ, zero],
+    (ab nat_rec [
+      la [’n] (suc ’m * ’n =ₙ ’n + ’m * ’n),
+      ab refl [ℕ, 0],
       la [’n, ’ih]
-        (apr eq_trans [
-          ℕ, add (suc ’m) (mul (suc ’m) ’n),
-          add (suc ’m) (add ’n (mul ’m ’n)),
-          add (suc ’n) (add ’m (mul ’m ’n)),
-          apr cong_add_l [
-            mul (suc ’m) ’n, add ’n (mul ’m ’n), suc ’m, ’ih
+        (ar eq_trans [
+          ℕ, suc ’m + (suc ’m * ’n),
+          suc ’m + (’n + ’m * ’n),
+          suc ’n + (’m + ’m * ’n),
+          ar cong_add_l [
+            suc ’m * ’n, ’n + ’m * ’n, suc ’m, ’ih
           ],
-          apr eq_trans [
-            ℕ, add (suc ’m) (add ’n (mul ’m ’n)),
-            add (add (suc ’m) ’n) (mul ’m ’n),
-            add (suc ’n) (add ’m (mul ’m ’n)),
-            apr add_assoc [suc ’m, ’n, mul ’m ’n],
-            apr eq_trans [
-              ℕ, add (add (suc ’m) ’n) (mul ’m ’n),
-              add (suc (add ’m ’n)) (mul ’m ’n),
-              add (suc ’n) (add ’m (mul ’m ’n)),
-              apr cong_add_r [
-                add (suc ’m) ’n, suc (add ’m ’n), mul ’m ’n,
-                apr eq_symm [
-                  ℕ, suc (add ’m ’n), add (suc ’m) ’n, apr succ_add [’m, ’n]
+          ar eq_trans [
+            ℕ, suc ’m + (’n + ’m * ’n),
+            (suc ’m + ’n) + ’m * ’n,
+            suc ’n + (’m + ’m * ’n),
+            ar add_assoc [suc ’m, ’n, ’m * ’n],
+            ar eq_trans [
+              ℕ, (suc ’m + ’n) + ’m * ’n,
+              suc (’m + ’n) + ’m * ’n,
+              suc ’n + (’m + ’m * ’n),
+              ar cong_add_r [
+                suc ’m + ’n, suc (’m + ’n), ’m * ’n,
+                ar eq_symm [
+                  ℕ, suc (’m + ’n), suc ’m + ’n, ar succ_add [’m, ’n]
                 ]
               ],
-              apr eq_trans [
-                ℕ, add (suc (add ’m ’n)) (mul ’m ’n),
-                add (suc (add ’n ’m)) (mul ’m ’n),
-                add (suc ’n) (add ’m (mul ’m ’n)),
-                apr cong_add_r [
-                  suc (add ’m ’n), suc (add ’n ’m), mul ’m ’n,
-                  apr cong_suc [
-                    add ’m ’n, add ’n ’m, apr add_comm [’m, ’n]
+              ar eq_trans [
+                ℕ, suc (’m + ’n) + ’m * ’n,
+                suc (’n + ’m) + ’m * ’n,
+                suc ’n + (’m + ’m * ’n),
+                ar cong_add_r [
+                  suc (’m + ’n), suc (’n + ’m), ’m * ’n,
+                  ar cong_suc [
+                    ’m + ’n, ’n + ’m, ar add_comm [’m, ’n]
                   ]
                 ],
-                apr eq_trans [
-                  ℕ, add (suc (add ’n ’m)) (mul ’m ’n),
-                  add (add (suc ’n) ’m) (mul ’m ’n),
-                  add (suc ’n) (add ’m (mul ’m ’n)),
-                  apr cong_add_r [
-                    suc (add ’n ’m), add (suc ’n) ’m, mul ’m ’n, apr succ_add [’n, ’m]
+                ar eq_trans [
+                  ℕ, suc (’n + ’m) + ’m * ’n,
+                  (suc ’n + ’m) + ’m * ’n,
+                  suc ’n + (’m + ’m * ’n),
+                  ar cong_add_r [
+                    suc (’n + ’m), suc ’n + ’m, ’m * ’n, ar succ_add [’n, ’m]
                   ],
-                  apr eq_symm [
-                    ℕ, add (suc ’n) (add ’m (mul ’m ’n)),
-                    add (add (suc ’n) ’m) (mul ’m ’n),
-                    apr add_assoc [suc ’n, ’m, mul ’m ’n]
+                  ar eq_symm [
+                    ℕ, suc ’n + (’m + ’m * ’n),
+                    (suc ’n + ’m) + ’m * ’n,
+                    ar add_assoc [suc ’n, ’m, ’m * ’n]
                   ]
                 ]
               ]
@@ -936,45 +904,46 @@ def succ_mul :=
         ]),
       ’n
     ]),
-    m◆ℕ ⇨ n◆ℕ ⇨ eq (mul (suc ’m) ’n) (add ’n (mul ’m ’n)) ℕ)
+    m◆ℕ ⇨ n◆ℕ ⇨ suc ’m * ’n =ₙ ’n + ’m * ’n)
 
+/-- n * m = m * n -/
 def mul_comm :=
   (la [’n, ’m]
-    (apb nat_rec [
-      la [’m] (eq (mul ’n ’m) (mul ’m ’n) ℕ),
-      apr eq_symm [ℕ, mul zero ’n, zero, apr zero_mul [’n]],
+    (ab nat_rec [
+      la [’m] (’n * ’m =ₙ ’m * ’n),
+      ar eq_symm [ℕ, 0 * ’n, 0, ar zero_mul [’n]],
       la [’m, ’ih]
-        (apr eq_trans [
-          ℕ, add ’n (mul ’n ’m), add ’n (mul ’m ’n), mul (suc ’m) ’n,
-          apr cong_add_l [mul ’n ’m, mul ’m ’n, ’n, ’ih],
-          apr eq_symm [
-            ℕ, mul (suc ’m) ’n, add ’n (mul ’m ’n), apr succ_mul [’m, ’n]
+        (ar eq_trans [
+          ℕ, ’n + ’n * ’m, ’n + ’m * ’n, suc ’m * ’n,
+          ar cong_add_l [’n * ’m, ’m * ’n, ’n, ’ih],
+          ar eq_symm [
+            ℕ, suc ’m * ’n, ’n + ’m * ’n, ar succ_mul [’m, ’n]
           ]
         ]),
       ’m
     ]),
-    n◆ℕ ⇨ m◆ℕ ⇨ eq (mul ’n ’m) (mul ’m ’n) ℕ)
+    n◆ℕ ⇨ m◆ℕ ⇨ ’n * ’m =ₙ ’m * ’n)
 
 /-- Factorial function -/
 def fac :=
   (la [’n]
-    (apb nat_rec [
-      const ℕ, one,
-      la [’n, ’nf] (mul (add one ’n) ’nf), ’n
+    (ab nat_rec [
+      const ℕ, 1,
+      la [’n, ’nf] ((’n + 1) * ’nf), ’n
     ]),
     n◆ℕ ⇨ ℕ)
 
 /-- 4 + 2 = 3! -/
 def four_plus_two_eq_three_factorial :=
-  (apb refl [ℕ, add four two],
-    eq (apr fac [suc two]) (add four two) ℕ)
+  (ab refl [ℕ, four + two],
+    ar fac [suc two] =ₙ four + two)
 
 def nat_pair := prod ℕ (const ℕ)
 
 /-- Get second element of `nat_pair` -/
 def nat_snd :=
   (la [’p]
-    (apb prod_rec [
+    (ab prod_rec [
       ℕ, const ℕ, const ℕ, la [’a, ’b] ’b, ’p
     ]),
     p◆nat_pair ⇨ ℕ)
@@ -982,15 +951,15 @@ def nat_snd :=
 /-- Fibonacci function -/
 def fib :=
   (la [’n]
-    (apr fst [
+    (ar fst [
       ℕ, const ℕ,
-      apb nat_rec [
-        const nat_pair, apb pmk [ℕ, const ℕ, zero, one],
+      ab nat_rec [
+        const nat_pair, ab pmk [ℕ, const ℕ, 0, 1],
         la [’n, ’nf]
-          (apb pmk [
+          (ab pmk [
             ℕ, const ℕ,
-            apr nat_snd [’nf],
-            add (apr fst [ℕ, const ℕ, ’nf]) (apr nat_snd [’nf])
+            ar nat_snd [’nf],
+            ar fst [ℕ, const ℕ, ’nf] + ar nat_snd [’nf]
           ]),
         ’n
       ]
@@ -999,67 +968,67 @@ def fib :=
 
 /-- fib (4 + 2) = 4 * 2 -/
 def fib_four_plus_two_eq_four_times_two :=
-  (apb refl [ℕ, add four four],
-    eq (apr fib [add four two]) (mul four two) ℕ)
+  (ab refl [ℕ, four + four],
+    ar fib [four + two] =ₙ four * two)
 
 /-- Zero is not a successor of any number -/
 def succ_ne_zero :=
   (la [’n, ’h]
-    (apr rw [
-      ℕ, suc ’n, zero,
-      apb nat_rec [const 𝒰, ⊥, la [’k, ’v] unit],
+    (ar rw [
+      ℕ, suc ’n, 0,
+      ab nat_rec [const 𝒰, ⊥, la [’k, ’v] unit],
       ’h, intro
     ]),
-    n◆ℕ ⇨ h◆(eq (suc ’n) zero ℕ) ⇨ ⊥)
+    n◆ℕ ⇨ h◆(suc ’n =ₙ 0) ⇨ ⊥)
 
 /-- Successor is injective -/
 def suc_inj :=
   (la [’n, ’m, ’h]
-    (apr rw [
+    (ar rw [
       ℕ, suc ’n, suc ’m,
-      la [’x] (eq ’n (apr pred [’x]) ℕ),
-      ’h, apb refl [ℕ, ’n]
+      la [’x] (’n =ₙ ar pred [’x]),
+      ’h, ab refl [ℕ, ’n]
     ]),
-    n◆ℕ ⇨ m◆ℕ ⇨ h◆(eq (suc ’n) (suc ’m) ℕ) ⇨ eq ’n ’m ℕ)
+    n◆ℕ ⇨ m◆ℕ ⇨ h◆(suc ’n =ₙ suc ’m) ⇨ ’n =ₙ ’m)
 
 /-- n + k = m + k → n = m -/
 def add_right_cancel :=
   (la [’n, ’m, ’k]
-    (apb nat_rec [
-      la [’k] (eq (add ’n ’k) (add ’m ’k) ℕ ⇨ eq ’n ’m ℕ),
+    (ab nat_rec [
+      la [’k] (’n + ’k =ₙ ’m + ’k ⇨ ’n =ₙ ’m),
       la [’h] ’h,
       la [’k, ’ih, ’h]
-        (ap ’ih (eq (add ’n ’k) (add ’m ’k) ℕ ⇨ eq ’n ’m ℕ) [
-          apr suc_inj [add ’n ’k, add ’m ’k, ’h]
+        (ap ’ih (’n + ’k =ₙ ’m + ’k ⇨ ’n =ₙ ’m) [
+          ar suc_inj [’n + ’k, ’m + ’k, ’h]
         ]),
       ’k
     ]),
-    n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ eq (add ’n ’k) (add ’m ’k) ℕ ⇨ eq ’n ’m ℕ)
+    n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ ’n + ’k =ₙ ’m + ’k ⇨ ’n =ₙ ’m)
 
 /-- even n := ∃ k, n = k + k -/
 def even n :=
-  prod ℕ (la [’k] (eq n (add ’k ’k) ℕ))
+  prod ℕ (la [’k'] (n =ₙ ’k' + ’k'))
 
-/-- odd n := ∃ k, n = suc(k + k) -/
+/-- odd n := ∃ k, n = suc (k + k) -/
 def odd n :=
-  prod ℕ (la [’k] (eq n (suc (add ’k ’k)) ℕ))
+  prod ℕ (la [’k'] (n =ₙ suc (’k' + ’k')))
 
 /-- 0 is even -/
 def even_zero :=
-  (apb pmk [
-    ℕ, la [’k] (eq zero (add ’k ’k) ℕ), zero, apb refl [ℕ, zero]
+  (ab pmk [
+    ℕ, la [’k] (0 =ₙ ’k + ’k), 0, ab refl [ℕ, 0]
   ],
-    even zero)
+    even 0)
 
 /-- If n is even, then succ n is odd -/
 def even_imp_succ_odd :=
   (la [’n, ’h]
-    (apb prod_rec [
-      ℕ, la [’k] (eq ’n (add ’k ’k) ℕ), const (odd (suc ’n)),
+    (ab prod_rec [
+      ℕ, la [’k] (’n =ₙ ’k + ’k), const (odd (suc ’n)),
       la [’k, ’hk]
-        (apb pmk [
-          ℕ, la [’j] (eq (suc ’n) (suc (add ’j ’j)) ℕ), ’k,
-          apr cong_suc [’n, add ’k ’k, ’hk]
+        (ab pmk [
+          ℕ, la [’j] (suc ’n =ₙ suc (’j + ’j)), ’k,
+          ar cong_suc [’n, ’k + ’k, ’hk]
         ]),
       ’h
     ]),
@@ -1068,19 +1037,19 @@ def even_imp_succ_odd :=
 /-- If n is odd, then succ n is even -/
 def odd_imp_succ_even :=
   (la [’n, ’h]
-    (apb prod_rec [
-      ℕ, la [’k] (eq ’n (suc (add ’k ’k)) ℕ), const (even (suc ’n)),
+    (ab prod_rec [
+      ℕ, la [’k] (’n =ₙ suc (’k + ’k)), const (even (suc ’n)),
       la [’k, ’hk]
-        (apb pmk [
-          ℕ, la [’j] (eq (suc ’n) (add ’j ’j) ℕ),
+        (ab pmk [
+          ℕ, la [’j] (suc ’n =ₙ ’j + ’j),
           suc ’k,
-          apr eq_trans [
-            ℕ, suc ’n, suc (suc (add ’k ’k)), add (suc ’k) (suc ’k),
-            apr cong_suc [’n, suc (add ’k ’k), ’hk],
-            apr eq_trans [
-              ℕ, suc (suc (add ’k ’k)), suc (add (suc ’k) ’k), add (suc ’k) (suc ’k),
-              apr cong_suc [suc (add ’k ’k), add (suc ’k) ’k, apr succ_add [’k, ’k]],
-              apb refl [ℕ, add (suc ’k) (suc ’k)]
+          ar eq_trans [
+            ℕ, suc ’n, suc (suc (’k + ’k)), suc ’k + suc ’k,
+            ar cong_suc [’n, suc (’k + ’k), ’hk],
+            ar eq_trans [
+              ℕ, suc (suc (’k + ’k)), suc (suc ’k + ’k), suc ’k + suc ’k,
+              ar cong_suc [suc (’k + ’k), suc ’k + ’k, ar succ_add [’k, ’k]],
+              ab refl [ℕ, suc ’k + suc ’k]
             ]
           ]
         ]),
@@ -1091,45 +1060,676 @@ def odd_imp_succ_even :=
 /-- Every number is even or odd -/
 def even_or_odd :=
   (la [’n]
-    (apb nat_rec [
+    (ab nat_rec [
       la [’n] (sum (even ’n) (odd ’n)),
-      apb inl [even zero, odd zero, apr even_zero []],
+      ab inl [even 0, odd 0, ar even_zero []],
       la [’n, ’ih]
-        (apb sum_rec [
+        (ab sum_rec [
           even ’n, odd ’n,
           const (sum (even (suc ’n)) (odd (suc ’n))),
-          la [’he] (apb inr [even (suc ’n), odd (suc ’n), apr even_imp_succ_odd [’n, ’he]]),
-          la [’ho] (apb inl [even (suc ’n), odd (suc ’n), apr odd_imp_succ_even [’n, ’ho]]),
+          la [’he] (ab inr [even (suc ’n), odd (suc ’n), ar even_imp_succ_odd [’n, ’he]]),
+          la [’ho] (ab inl [even (suc ’n), odd (suc ’n), ar odd_imp_succ_even [’n, ’ho]]),
           ’ih
         ]),
       ’n
     ]),
     n◆ℕ ⇨ sum (even ’n) (odd ’n))
 
+/-- two * n = n + n -/
+def mul_two_eq_add :=
+  (la [’n]
+    (ar mul_comm [two, ’n]),
+    n◆ℕ ⇨ two * ’n =ₙ ’n + ’n)
+
+/-- n * n = 0 → n = 0 -/
+def sq_zero_imp_zero :=
+  (la [’n]
+    (ab nat_rec [
+      la [’n] (’n * ’n =ₙ 0 ⇨ ’n =ₙ 0),
+      la [’h] (ab refl [ℕ, 0]),
+      la [’n, ’ih, ’h]
+        (ar false_elim [
+          suc ’n =ₙ 0,
+          ar succ_ne_zero [
+            ’n + ’n * suc ’n,
+            ar eq_trans [
+              ℕ, suc (’n + ’n * suc ’n), suc ’n * suc ’n, 0,
+              ar eq_symm [
+                ℕ, suc ’n * suc ’n, suc (’n + ’n * suc ’n),
+                ar eq_trans [
+                  ℕ, suc ’n * suc ’n,
+                  ’n + ’n * suc ’n,
+                  suc (’n + ’n * suc ’n),
+                  ar succ_mul [’n, suc ’n],
+                  ar eq_symm [
+                    ℕ, suc (’n + ’n * suc ’n),
+                    ’n + ’n * suc ’n,
+                    ar succ_add [’n, ’n * suc ’n]
+                  ]
+                ]
+              ],
+              ’h
+            ]
+          ]
+        ]),
+      ’n
+    ]),
+    n◆ℕ ⇨ ’n * ’n =ₙ 0 ⇨ ’n =ₙ 0)
+
+/-- k + k ≠ succ (j + j) -/
+def even_ne_odd_base :=
+  (la [’k]
+    (ab nat_rec [
+      la [’k] (j◆ℕ ⇨ ’k + ’k =ₙ suc (’j + ’j) ⇨ ⊥),
+      la [’j, ’h]
+        (ar succ_ne_zero [
+          ’j + ’j,
+          ar eq_symm [ℕ, 0 + 0, suc (’j + ’j), ’h]
+        ]),
+      la [’k, ’ih, ’j, ’h]
+        (ap (ab nat_rec [
+          la [’j] (’j + ’j =ₙ suc (’k + ’k) ⇨ ⊥),
+          la [’hh]
+            (ar succ_ne_zero [
+              ’k + ’k,
+              ar eq_symm [ℕ, 0 + 0, suc (’k + ’k), ’hh]
+            ]),
+          la [’j2, ’ih2, ’hh]
+            (ap ’ih (j◆ℕ ⇨ ’k + ’k =ₙ suc (’j + ’j) ⇨ ⊥) [
+              ’j2,
+              ar eq_symm [
+                ℕ, suc (’j2 + ’j2), ’k + ’k,
+                ar eq_trans [
+                  ℕ, suc (’j2 + ’j2), suc ’j2 + ’j2, ’k + ’k,
+                  ar succ_add [’j2, ’j2],
+                  ar suc_inj [suc ’j2 + ’j2, ’k + ’k, ’hh]
+                ]
+              ]
+            ]),
+          ’j
+        ]) (’j + ’j =ₙ suc (’k + ’k) ⇨ ⊥) [
+          ar eq_symm [
+            ℕ, suc (’k + ’k), ’j + ’j,
+            ar eq_trans [
+              ℕ, suc (’k + ’k), suc ’k + ’k, ’j + ’j,
+              ar succ_add [’k, ’k],
+              ar suc_inj [suc ’k + ’k, ’j + ’j, ’h]
+            ]
+          ]
+        ]),
+      ’k
+    ]),
+    k◆ℕ ⇨ j◆ℕ ⇨ ’k + ’k =ₙ suc (’j + ’j) ⇨ ⊥)
+
+/-- even n → odd n → ⊥ -/
+def even_ne_odd :=
+  (la [’n, ’he, ’ho]
+    (ab prod_rec [
+      ℕ, la [’k] (’n =ₙ ’k + ’k), const ⊥,
+      la [’k, ’hk]
+        (ab prod_rec [
+          ℕ, la [’j] (’n =ₙ suc (’j + ’j)), const ⊥,
+          la [’j, ’hj]
+            (ar even_ne_odd_base [’k, ’j,
+              ar eq_trans [
+                ℕ, ’k + ’k, ’n, suc (’j + ’j),
+                ar eq_symm [ℕ, ’n, ’k + ’k, ’hk],
+                ’hj
+              ]
+            ]),
+          ’ho
+        ]),
+      ’he
+    ]),
+    n◆ℕ ⇨ even ’n ⇨ odd ’n ⇨ ⊥)
+
+/-- (a + a) * (b + b) = (a + b) + (a + b) -/
+def double_sum :=
+  (la [’a, ’b]
+    (ar eq_symm [
+      ℕ,
+      (’a + ’b) + (’a + ’b),
+      (’a + ’a) + (’b + ’b),
+      ar eq_trans [
+        ℕ, (’a + ’b) + (’a + ’b),
+        ’a + (’b + (’a + ’b)),
+        (’a + ’a) + (’b + ’b),
+        ar eq_symm [ℕ, ’a + (’b + (’a + ’b)), (’a + ’b) + (’a + ’b),
+          ar add_assoc [’a, ’b, ’a + ’b]
+        ],
+        ar eq_trans [
+          ℕ, ’a + (’b + (’a + ’b)),
+          ’a + (’a + (’b + ’b)),
+          (’a + ’a) + (’b + ’b),
+          ar cong_add_l [
+            ’b + (’a + ’b), ’a + (’b + ’b), ’a,
+            ar eq_trans [
+              ℕ, ’b + (’a + ’b),
+              (’b + ’a) + ’b,
+              ’a + (’b + ’b),
+              ar add_assoc [’b, ’a, ’b],
+              ar eq_trans [
+                ℕ, (’b + ’a) + ’b,
+                (’a + ’b) + ’b,
+                ’a + (’b + ’b),
+                ar cong_add_r [
+                  ’b + ’a, ’a + ’b, ’b,
+                  ar add_comm [’b, ’a]
+                ],
+                ar eq_symm [
+                  ℕ, ’a + (’b + ’b), (’a + ’b) + ’b,
+                  ar add_assoc [’a, ’b, ’b]
+                ]
+              ]
+            ]
+          ],
+          ar add_assoc [’a, ’a, ’b + ’b]
+        ]
+      ]
+    ]),
+    a◆ℕ ⇨ b◆ℕ ⇨ (’a + ’a) + (’b + ’b) =ₙ (’a + ’b) + (’a + ’b))
+
+/-- n + n = m + m → n = m -/
+def double_inj :=
+  (la [’n]
+    (ab nat_rec [
+      la [’n] (m◆ℕ ⇨ ’n + ’n =ₙ ’m + ’m ⇨ ’n =ₙ ’m),
+      la [’m]
+        (ab nat_rec [
+          la [’p] (0 + 0 =ₙ ’p + ’p ⇨ 0 =ₙ ’p),
+          la [’h] (ab refl [ℕ, 0]),
+          la [’p, ’ih2, ’h]
+            (ar false_elim [
+              0 =ₙ suc ’p,
+              ar succ_ne_zero [
+                suc ’p + ’p,
+                ar eq_symm [ℕ, 0 + 0, suc ’p + suc ’p, ’h]
+              ]
+            ]),
+          ’m
+        ]),
+      la [’n, ’ih, ’m]
+        (ab nat_rec [
+          la [’p] (suc ’n + suc ’n =ₙ ’p + ’p ⇨ suc ’n =ₙ ’p),
+          la [’h]
+            (ar false_elim [
+              suc ’n =ₙ 0,
+              ar succ_ne_zero [suc ’n + ’n, ’h]
+            ]),
+          la [’p, ’ih2, ’h]
+            (ar cong_suc [
+              ’n, ’p,
+              ap ’ih (m◆ℕ ⇨ ’n + ’n =ₙ ’m + ’m ⇨ ’n =ₙ ’m) [
+                ’p,
+                ar suc_inj [
+                  ’n + ’n, ’p + ’p,
+                  ar eq_trans [
+                    ℕ, suc (’n + ’n), suc ’p + ’p, suc (’p + ’p),
+                    ar eq_trans [
+                      ℕ, suc (’n + ’n), suc ’n + ’n, suc ’p + ’p,
+                      ar succ_add [’n, ’n],
+                      ar suc_inj [suc ’n + ’n, suc ’p + ’p, ’h]
+                    ],
+                    ar eq_symm [ℕ, suc (’p + ’p), suc ’p + ’p,
+                      ar succ_add [’p, ’p]]
+                  ]
+                ]
+              ]
+            ]),
+          ’m
+        ]),
+      ’n
+    ]),
+    n◆ℕ ⇨ m◆ℕ ⇨ ’n + ’n =ₙ ’m + ’m ⇨ ’n =ₙ ’m)
+
+/-- (a + a) * m is even -/
+def mul_even_even :=
+  (la [’m, ’a]
+    (ab nat_rec [
+      la [’a] (even ((’a + ’a) * ’m)),
+      ab pmk [
+        ℕ, la [’k] (0 * ’m =ₙ ’k + ’k),
+        0,
+        ar zero_mul [’m]
+      ],
+      la [’a, ’ih]
+        (ab prod_rec [
+          ℕ, la [’j] ((’a + ’a) * ’m =ₙ ’j + ’j),
+          const (even ((suc ’a + suc ’a) * ’m)),
+          la [’j, ’hj]
+            (ar rw [
+              ℕ, suc (’a + ’a), suc ’a + ’a,
+              la [’x] (even (suc ’x * ’m)),
+              ar succ_add [’a, ’a],
+              ab pmk [
+                ℕ, la [’w] (suc (suc (’a + ’a)) * ’m =ₙ ’w + ’w),
+                ’m + ’j,
+                ar eq_trans [
+                  ℕ, suc (suc (’a + ’a)) * ’m,
+                  ’m + (’m + (’j + ’j)),
+                  (’m + ’j) + (’m + ’j),
+                  ar eq_trans [
+                    ℕ, suc (suc (’a + ’a)) * ’m,
+                    ’m + (suc (’a + ’a) * ’m),
+                    ’m + (’m + (’j + ’j)),
+                    ar succ_mul [suc (’a + ’a), ’m],
+                    ar cong_add_l [
+                      suc (’a + ’a) * ’m,
+                      ’m + (’j + ’j),
+                      ’m,
+                      ar eq_trans [
+                        ℕ, suc (’a + ’a) * ’m,
+                        ’m + ((’a + ’a) * ’m),
+                        ’m + (’j + ’j),
+                        ar succ_mul [’a + ’a, ’m],
+                        ar cong_add_l [
+                          (’a + ’a) * ’m, ’j + ’j, ’m, ’hj
+                        ]
+                      ]
+                    ]
+                  ],
+                  ar eq_trans [
+                    ℕ, ’m + (’m + (’j + ’j)),
+                    (’m + ’m) + (’j + ’j),
+                    (’m + ’j) + (’m + ’j),
+                    ar add_assoc [’m, ’m, ’j + ’j],
+                    ar double_sum [’m, ’j]
+                  ]
+                ]
+              ]
+            ]),
+          ’ih
+        ]),
+      ’a
+    ]),
+    m◆ℕ ⇨ a◆ℕ ⇨ even ((’a + ’a) * ’m))
+
+/-- odd n → odd (n * n) -/
+def odd_sq_odd :=
+  (la [’n, ’h]
+    (ab prod_rec [
+      ℕ, la [’k] (’n =ₙ suc (’k + ’k)), const (odd (’n * ’n)),
+      la [’k, ’hk]
+        (ar rw [
+          ℕ, suc (’k + ’k), ’n,
+          la [’x] (odd (’x * ’x)),
+          ar eq_symm [ℕ, ’n, suc (’k + ’k), ’hk],
+          ab prod_rec [
+            ℕ,
+            la [’j] ((’k + ’k) * suc (’k + ’k) =ₙ ’j + ’j),
+            const (odd (suc (’k + ’k) * suc (’k + ’k))),
+            la [’j, ’hj]
+              (ab pmk [
+                ℕ, la [’w] (suc (’k + ’k) * suc (’k + ’k) =ₙ suc (’w + ’w)),
+                ’k + ’j,
+                ar eq_trans [
+                  ℕ, suc (’k + ’k) * suc (’k + ’k),
+                  suc (’k + ’k) + (’j + ’j),
+                  suc ((’k + ’j) + (’k + ’j)),
+                  ar eq_trans [
+                    ℕ, suc (’k + ’k) * suc (’k + ’k),
+                    suc (’k + ’k) + (suc (’k + ’k) * (’k + ’k)),
+                    suc (’k + ’k) + (’j + ’j),
+                    ab refl [ℕ, suc (’k + ’k) + (suc (’k + ’k) * (’k + ’k))],
+                    ar cong_add_l [
+                      suc (’k + ’k) * (’k + ’k),
+                      ’j + ’j,
+                      suc (’k + ’k),
+                      ar eq_trans [
+                        ℕ, suc (’k + ’k) * (’k + ’k),
+                        (’k + ’k) * suc (’k + ’k),
+                        ’j + ’j,
+                        ar mul_comm [suc (’k + ’k), ’k + ’k],
+                        ’hj
+                      ]
+                    ]
+                  ],
+                  ar eq_trans [
+                    ℕ, suc (’k + ’k) + (’j + ’j),
+                    suc ((’k + ’k) + (’j + ’j)),
+                    suc ((’k + ’j) + (’k + ’j)),
+                    ar eq_symm [ℕ, suc ((’k + ’k) + (’j + ’j)),
+                      suc (’k + ’k) + (’j + ’j),
+                      ar succ_add [’k + ’k, ’j + ’j]],
+                    ar cong_suc [
+                      (’k + ’k) + (’j + ’j),
+                      (’k + ’j) + (’k + ’j),
+                      ar double_sum [’k, ’j]
+                    ]
+                  ]
+                ]
+              ]),
+            ar mul_even_even [suc (’k + ’k), ’k]
+          ]
+        ]),
+      ’h
+    ]),
+    n◆ℕ ⇨ odd ’n ⇨ odd (’n * ’n))
+
+/-- even (n * n) → even n -/
+def even_sq_imp_even :=
+  (la [’n, ’h]
+    (ab sum_rec [
+      even ’n, odd ’n,
+      const (even ’n),
+      la [’he] ’he,
+      la [’ho]
+        (ar false_elim [
+          even ’n,
+          ar even_ne_odd [’n * ’n, ’h, ar odd_sq_odd [’n, ’ho]]
+        ]),
+      ar even_or_odd [’n]
+    ]),
+    n◆ℕ ⇨ even (’n * ’n) ⇨ even ’n)
+
+/-- j + d = 0 → j = 0 -/
+def add_eq_zero_l :=
+  (la [’j, ’d]
+    (ab nat_rec [
+      la [’x] (’j + ’x =ₙ 0 ⇨ ’j =ₙ 0),
+      la [’h] ’h,
+      la [’x, ’xr, ’h]
+        (ar false_elim [’j =ₙ 0, ar succ_ne_zero [’j + ’x, ’h]]),
+      ’d
+    ]),
+    j◆ℕ ⇨ d◆ℕ ⇨ ’j + ’d =ₙ 0 ⇨ ’j =ₙ 0)
+
+/-- (a * a) + b = (a * b) + (a * b) -/
+def double_mul :=
+  (la [’a, ’b]
+    (ab nat_rec [
+      la [’a] ((’a + ’a) * ’b =ₙ ’a * ’b + ’a * ’b),
+      ar rw [
+        ℕ, 0, 0 * ’b,
+        la [’x] (0 * ’b =ₙ ’x + ’x),
+        ar eq_symm [ℕ, 0 * ’b, 0, ar zero_mul [’b]],
+        ar zero_mul [’b]
+      ],
+      la [’a, ’ih]
+        (ar eq_trans [
+          ℕ, (suc ’a + suc ’a) * ’b,
+          ’b + (’b + ((’a + ’a) * ’b)),
+          suc ’a * ’b + suc ’a * ’b,
+          ar eq_trans [
+            ℕ, (suc ’a + suc ’a) * ’b,
+            ’b + ((suc ’a + ’a) * ’b),
+            ’b + (’b + ((’a + ’a) * ’b)),
+            ar succ_mul [suc ’a + ’a, ’b],
+            ar cong_add_l [
+              (suc ’a + ’a) * ’b,
+              ’b + ((’a + ’a) * ’b),
+              ’b,
+              ar eq_trans [
+                ℕ, (suc ’a + ’a) * ’b,
+                suc (’a + ’a) * ’b,
+                ’b + ((’a + ’a) * ’b),
+                ar rw [
+                  ℕ, suc ’a + ’a, suc (’a + ’a),
+                  la [’x] ((suc ’a + ’a) * ’b =ₙ ’x * ’b),
+                  ar eq_symm [ℕ, suc (’a + ’a), suc ’a + ’a,
+                    ar succ_add [’a, ’a]
+                  ],
+                  ab refl [ℕ, (suc ’a + ’a) * ’b]
+                ],
+                ar succ_mul [’a + ’a, ’b]
+              ]
+            ]
+          ],
+          ar eq_trans [
+            ℕ, ’b + (’b + ((’a + ’a) * ’b)),
+            ’b + (’b + (’a * ’b + ’a * ’b)),
+            suc ’a * ’b + suc ’a * ’b,
+            ar cong_add_l [
+              ’b + ((’a + ’a) * ’b),
+              ’b + (’a * ’b + ’a * ’b),
+              ’b,
+              ar cong_add_l [
+                (’a + ’a) * ’b, ’a * ’b + ’a * ’b, ’b, ’ih
+              ]
+            ],
+            ar eq_trans [
+              ℕ, ’b + (’b + (’a * ’b + ’a * ’b)),
+              (’b + ’b) + (’a * ’b + ’a * ’b),
+              suc ’a * ’b + suc ’a * ’b,
+              ar add_assoc [’b, ’b, ’a * ’b + ’a * ’b],
+              ar eq_trans [
+                ℕ, (’b + ’b) + (’a * ’b + ’a * ’b),
+                (’b + ’a * ’b) + (’b + ’a * ’b),
+                suc ’a * ’b + suc ’a * ’b,
+                ar double_sum [’b, ’a * ’b],
+                ar eq_trans [
+                  ℕ, (’b + ’a * ’b) + (’b + ’a * ’b),
+                  suc ’a * ’b + (’b + ’a * ’b),
+                  suc ’a * ’b + suc ’a * ’b,
+                  ar cong_add_r [
+                    ’b + ’a * ’b, suc ’a * ’b, ’b + ’a * ’b,
+                    ar eq_symm [
+                      ℕ, suc ’a * ’b, ’b + ’a * ’b,
+                      ar succ_mul [’a, ’b]
+                    ]
+                  ],
+                  ar cong_add_l [
+                    ’b + ’a * ’b, suc ’a * ’b, suc ’a * ’b,
+                    ar eq_symm [
+                      ℕ, suc ’a * ’b, ’b + ’a * ’b,
+                      ar succ_mul [’a, ’b]
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        ]),
+      ’a
+    ]),
+    a◆ℕ ⇨ b◆ℕ ⇨ (’a + ’a) * ’b =ₙ ’a * ’b + ’a * ’b)
+
+/-- From 2n² = (2l)², derive n² = 2l² -/
+def sq_half :=
+  (la [’n, ’l, ’h]
+    (ar eq_trans [
+      ℕ, ’n * ’n, ’l * (’l + ’l), ’l * ’l + ’l * ’l,
+      ar double_inj [
+        ’n * ’n, ’l * (’l + ’l),
+        ar eq_trans [
+          ℕ, ’n * ’n + ’n * ’n,
+          (’l + ’l) * (’l + ’l),
+          ’l * (’l + ’l) + ’l * (’l + ’l),
+          ar eq_trans [
+            ℕ, ’n * ’n + ’n * ’n,
+            two * (’n * ’n),
+            (’l + ’l) * (’l + ’l),
+            ar eq_symm [
+              ℕ, two * (’n * ’n), ’n * ’n + ’n * ’n,
+              ar mul_two_eq_add [’n * ’n]
+            ],
+            ’h
+          ],
+          ar double_mul [’l, ’l + ’l]
+        ]
+      ],
+      ar eq_trans [
+        ℕ, ’l * (’l + ’l), (’l + ’l) * ’l,
+        ’l * ’l + ’l * ’l,
+        ar mul_comm [’l, ’l + ’l],
+        ar double_mul [’l, ’l]
+      ]
+    ]),
+    n◆ℕ ⇨ l◆ℕ ⇨ two * (’n * ’n) =ₙ (’l + ’l) * (’l + ’l) ⇨ ’n * ’n =ₙ ’l * ’l + ’l * ’l)
+
+/-- From n² = 2l² and n = 2i, derive 2i² = l² -/
+def half_sq :=
+  (la [’i, ’l, ’n, ’hnn, ’hn]
+    (ar eq_trans [
+      ℕ, two * (’i * ’i), ’i * ’i + ’i * ’i, ’l * ’l,
+      ar mul_two_eq_add [’i * ’i],
+      ar eq_trans [
+        ℕ, ’i * ’i + ’i * ’i, (’i + ’i) * ’i, ’l * ’l,
+        ar eq_symm [
+          ℕ, (’i + ’i) * ’i, ’i * ’i + ’i * ’i,
+          ar double_mul [’i, ’i]
+        ],
+        ar eq_trans [
+          ℕ, (’i + ’i) * ’i, ’i * (’i + ’i), ’l * ’l,
+          ar mul_comm [’i + ’i, ’i],
+          ar double_inj [
+            ’i * (’i + ’i), ’l * ’l,
+            ar eq_trans [
+              ℕ, ’i * (’i + ’i) + ’i * (’i + ’i),
+              (’i + ’i) * (’i + ’i),
+              ’l * ’l + ’l * ’l,
+              ar eq_symm [
+                ℕ, (’i + ’i) * (’i + ’i),
+                ’i * (’i + ’i) + ’i * (’i + ’i),
+                ar double_mul [’i, ’i + ’i]
+              ],
+              ar rw [
+                ℕ, ’n, ’i + ’i,
+                la [’x] (’x * ’x =ₙ ’l * ’l + ’l * ’l),
+                ’hn, ’hnn
+              ]
+            ]
+          ]
+        ]
+      ]
+    ]),
+    i◆ℕ ⇨ l◆ℕ ⇨ n◆ℕ ⇨ ’n * ’n =ₙ ’l * ’l + ’l * ’l ⇨ ’n =ₙ ’i + ’i ⇨ two * (’i * ’i) =ₙ ’l * ’l)
+
+/-- Strong induction lemma for √2 irrationality -/
+def strong_sqrt_two :=
+  (la [’t]
+    (ab nat_rec [
+      la [’t] (j◆ℕ ⇨ d◆ℕ ⇨ n◆ℕ ⇨ ’j + ’d =ₙ ’t ⇨ (’j =ₙ 0 ⇨ ⊥) ⇨ two * (’n * ’n) =ₙ ’j * ’j ⇨ ⊥),
+      la [’j, ’d, ’n, ’hjd, ’hj, ’h]
+        (ap ’hj (’j =ₙ 0 ⇨ ⊥) [
+          ar add_eq_zero_l [’j, ’d, ’hjd]
+        ]),
+      la [’t, ’ih, ’j, ’d, ’n, ’hjd, ’hj, ’h]
+        (ap
+          (ab nat_rec [
+            la [’d2] (’j + ’d2 =ₙ suc ’t ⇨ ⊥),
+            la [’hjd0]
+              (ab prod_rec [
+                ℕ, la [’k'] (’j =ₙ ’k' + ’k'), const ⊥,
+                la [’l, ’hl]
+                  (ap
+                    (ab nat_rec [
+                      la [’w] (’j =ₙ ’w + ’w ⇨ ⊥),
+                      la [’hlz]
+                        (ar succ_ne_zero [
+                          ’t,
+                          ar eq_trans [
+                            ℕ, suc ’t, ’j, 0,
+                            ar eq_symm [ℕ, ’j, suc ’t, ’hjd0],
+                            ’hlz
+                          ]
+                        ]),
+                      la [’w2, ’recL, ’hlw]
+                        (ab prod_rec [
+                          ℕ, la [’k'] (’n =ₙ ’k' + ’k'), const ⊥,
+                          la [’i, ’hi]
+                            (ap ’ih
+                              (j◆ℕ ⇨ d◆ℕ ⇨ n◆ℕ ⇨ ’j + ’d =ₙ ’t ⇨ (’j =ₙ 0 ⇨ ⊥) ⇨ two * (’n * ’n) =ₙ ’j * ’j ⇨ ⊥) [
+                              suc ’w2, ’w2, ’i,
+                              ar suc_inj [
+                                suc ’w2 + ’w2, ’t,
+                                ar eq_trans [
+                                  ℕ, suc ’w2 + suc ’w2, ’j, suc ’t,
+                                  ar eq_symm [ℕ, ’j, suc ’w2 + suc ’w2, ’hlw],
+                                  ’hjd0
+                                ]
+                              ],
+                              la [’h0] (ar succ_ne_zero [’w2, ’h0]),
+                              ar half_sq [
+                                ’i, suc ’w2, ’n,
+                                ar sq_half [
+                                  ’n, suc ’w2,
+                                  ar rw [
+                                    ℕ, ’j, suc ’w2 + suc ’w2,
+                                    la [’x] (two * (’n * ’n) =ₙ ’x * ’x),
+                                    ’hlw, ’h
+                                  ]
+                                ],
+                                ’hi
+                              ]
+                            ]),
+                          ar even_sq_imp_even [
+                            ’n,
+                            ab pmk [
+                              ℕ, la [’k'] (’n * ’n =ₙ ’k' + ’k'),
+                              suc ’w2 * suc ’w2,
+                              ar sq_half [
+                                ’n, suc ’w2,
+                                ar rw [
+                                  ℕ, ’j, suc ’w2 + suc ’w2,
+                                  la [’x] (two * (’n * ’n) =ₙ ’x * ’x),
+                                  ’hlw, ’h
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]),
+                      ’l
+                    ])
+                    (’j =ₙ ’l + ’l ⇨ ⊥) [’hl]),
+                ar even_sq_imp_even [
+                  ’j,
+                  ab pmk [
+                    ℕ, la [’k'] (’j * ’j =ₙ ’k' + ’k'),
+                    ’n * ’n,
+                    ar eq_trans [
+                      ℕ, ’j * ’j, two * (’n * ’n),
+                      ’n * ’n + ’n * ’n,
+                      ar eq_symm [
+                        ℕ, two * (’n * ’n), ’j * ’j, ’h
+                      ],
+                      ar mul_two_eq_add [’n * ’n]
+                    ]
+                  ]
+                ]
+              ]),
+            la [’d2, ’recD, ’hjd2]
+              (ap ’ih (j◆ℕ ⇨ d◆ℕ ⇨ n◆ℕ ⇨ ’j + ’d =ₙ ’t ⇨ (’j =ₙ 0 ⇨ ⊥) ⇨ two * (’n * ’n) =ₙ ’j * ’j ⇨ ⊥) [
+                ’j, ’d2, ’n,
+                ar suc_inj [’j + ’d2, ’t, ’hjd2],
+                ’hj, ’h
+              ]),
+            ’d
+          ])
+          (’j + ’d =ₙ suc ’t ⇨ ⊥) [’hjd]),
+      ’t
+    ]),
+    t◆ℕ ⇨ j◆ℕ ⇨ d◆ℕ ⇨ n◆ℕ ⇨ ’j + ’d =ₙ ’t ⇨ (’j =ₙ 0 ⇨ ⊥) ⇨ two * (’n * ’n) =ₙ ’j * ’j ⇨ ⊥)
+
 /-- √2 is irrational -/
 def sqrt_two_irrational :=
-  (name "sorry",
-    n◆ℕ ⇨ m◆ℕ ⇨ hm◆(eq ’m zero ℕ ⇨ ⊥) ⇨ h◆(eq (mul two (mul ’n ’n)) (mul ’m ’m) ℕ) ⇨ ⊥)
+  (la [’n, ’m, ’hm, ’h]
+    (ar strong_sqrt_two [
+      ’m, ’m, 0, ’n, ab refl [ℕ, ’m], ’hm, ’h
+    ]),
+    n◆ℕ ⇨ m◆ℕ ⇨ hm◆(’m =ₙ 0 ⇨ ⊥) ⇨ h◆(two * (’n * ’n) =ₙ ’m * ’m) ⇨ ⊥)
 
 /-- Exponentiation -/
 def pow' :=
   (la [’n]
-    (apb nat_rec [
-      const ℕ, one, la [’k, ’m] (mul ’n ’m)
+    (ab nat_rec [
+      const ℕ, 1, la [’k, ’m] (’n * ’m)
     ]),
     n◆ℕ ⇨ ℕ ⇨ ℕ)
 
-def pow n m := apr pow' [n, m]
+def pow n m := ar pow' [n, m]
+
+instance : Pow Term Term := ⟨pow⟩
 
 /-- 2 ^ 4 = 16 -/
 def two_to_the_four_eq_sixteen :=
-  (apb refl [ℕ, sixteen],
-    eq (pow two four) sixteen ℕ)
+  (ab refl [ℕ, sixteen],
+    two ^ four =ₙ sixteen)
 
 /-- Fermat's last theorem -/
 def fermat :=
   (name "sorry",
-    a◆ℕ ⇨ b◆ℕ ⇨ c◆ℕ ⇨ n◆ℕ ⇨ (eq ’a zero ℕ ⇨ ⊥) ⇨ (eq ’b zero ℕ ⇨ ⊥) ⇨ (eq ’c zero ℕ ⇨ ⊥) ⇨ (eq ’n zero ℕ ⇨ ⊥) ⇨ (eq ’n one ℕ ⇨ ⊥) ⇨ (eq ’n two ℕ ⇨ ⊥) ⇨ eq (add (pow ’a ’n) (pow ’b ’n)) (pow ’c ’n) ℕ ⇨ ⊥)
+    a◆ℕ ⇨ b◆ℕ ⇨ c◆ℕ ⇨ n◆ℕ ⇨ (’a =ₙ 0 ⇨ ⊥) ⇨ (’b =ₙ 0 ⇨ ⊥) ⇨ (’c =ₙ 0 ⇨ ⊥) ⇨ (’n =ₙ 0 ⇨ ⊥) ⇨ (’n =ₙ 1 ⇨ ⊥) ⇨ (’n =ₙ two ⇨ ⊥) ⇨ ’a ^ ’n + ’b ^ ’n =ₙ ’c ^ ’n ⇨ ⊥)
 
 def tests := Std.HashMap.ofList [
   ("a_imp_a", a_imp_a),
@@ -1154,7 +1754,7 @@ def tests := Std.HashMap.ofList [
   ("add_comm", add_comm),
   ("add_assoc", add_assoc),
   ("pred", pred),
-  ("subt", subt),
+  ("subt'", subt'),
   ("four_minus_two_eq_two", four_minus_two_eq_two),
   ("two_minus_four_eq_zero", two_minus_four_eq_zero),
   ("mul'", mul'),
@@ -1166,20 +1766,21 @@ def tests := Std.HashMap.ofList [
   ("fib", fib),
   ("fib_four_plus_two_eq_four_times_two", fib_four_plus_two_eq_four_times_two),
   ("succ_ne_zero", succ_ne_zero),
+  ("sqrt_two_irrational", sqrt_two_irrational),
   ("pow'", pow'),
   ("two_to_the_four_eq_sixteen", two_to_the_four_eq_sixteen),
 ]
 
 def run_test (name : String) (tpair : Term × Term) : IO Unit := do
   let start ← IO.monoNanosNow
-  let res := if ch tpair then "passed" else "FAILED"
-  IO.println s!"{name} {res} {((← IO.monoNanosNow) - start) / 1000}μs"
+  let res := if ch tpair then "✅" else "❌"
+  IO.println s!"{res} {name} {((← IO.monoNanosNow) - start) / 1000}μs"
 
 def main (args : List String) : IO Unit := do
   if h : 0 < args.length then
     if h : args[0] ∈ tests then
       run_test args[0] tests[args[0]]
     else
-      IO.println "Test name not found"
+      IO.println s!"Test {args[0]} not found"
   else
     tests.forM run_test
