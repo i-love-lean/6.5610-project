@@ -4,7 +4,7 @@ import Std.Data.ExtHashSet
 /-
 # μLean
 
-From 0 to √2 is irrational in less than 2000 lines of code! Inclues an elaborator, type checker, and lots of example proofs.
+From 0 to √2 is irrational in less than 2000 lines of code! Includes an elaborator, type checker, and lots of example proofs.
 
 μLean's type system is based on the calculus of constructions and very similar to Lean (obviously), but with fewer features to make the implementation simpler. μLean does not have general inductive types and instead has a few hardcoded inductive types such as the natural numbers. Additionally, μLean has cumulative universes rather than noncumulative universes and propositions in μLean live in `Type` instead of a dedicated `Prop` universe, which avoids a lot of Lean's `Prop` weirdness.
 
@@ -136,6 +136,7 @@ def free (s : String) : Term → Bool
 /-- Generate a name not free in `t` or `t'` -/
 def gensym (s : String) (t t' : Term) : Id String := do
   let mut i := 0
+  -- This heuristic seems pretty fast in practice
   while let s' := s ++ toString i; free s' t || free s' t' do
     i := i + 1
   return s ++ toString i
@@ -473,8 +474,8 @@ partial def check (env : List Term) : Term → Term → Bool
 
 #guard !check [] (prod 𝒰 𝒰) (prod 𝒰 𝒰)
 
-/-- User-facing type checker -/
-def ch (p : Term × Term) :=
+/-- User-facing type checker (don't use `check` directly!) -/
+def checkuser (p : Term × Term) :=
   let t := dbify [] p.1
   let τ := dbify [] p.2
   -- We don't really care about universes above 2 so just hardcode this for simplicity
@@ -524,6 +525,8 @@ def serialize (p : Term × Term) :=
 ## Proving some stuff
 
 Now let's try out μLean and do some math!
+
+### Basic logic
 -/
 
 /-- A → A -/
@@ -573,15 +576,6 @@ def not_not_not_a_imp_not_a :=
     ]),
     α◆𝒰 ⇨ f◆(((’α ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) ⇨ a◆’α ⇨ ⊥)
 
-instance : Zero Term := ⟨zero⟩
-
-/-- ∃ n : ℕ, n = 0 -/
-def exists_n_eq_zero :=
-  (ab pmk [
-    ℕ, la [’n] (’n =ₙ 0), 0, ab refl [ℕ, 0]
-  ],
-    prod ℕ (la [’n] (’n =ₙ 0)))
-
 /-- ∀ a : A, ∃ b : A, b = a -/
 def forall_a_exists_b_eq_a :=
   (la [’α, ’a]
@@ -589,47 +583,6 @@ def forall_a_exists_b_eq_a :=
       ’α, la [’b] (eq ’b ’a ’α), ’a, ab refl [’α, ’a]
     ]),
     α◆𝒰 ⇨ a◆’α ⇨ prod ’α (la [’b] (eq ’b ’a ’α)))
-
-/-- Convenience wrapper around `succ` -/
-def suc n := ap succ (ℕ ⇨ ℕ) [n]
-
-/-- 1 exists (yeah I know this is not super exciting) -/
-def one := suc 0
-
-instance : One Term := ⟨one⟩
-
-/-- 2 exists -/
-def two := suc 1
-
-/-- 4 exists -/
-def four := suc (suc two)
-
-/-- Addition -/
-def add' :=
-  (la [’n]
-    (ab nat_rec [
-      const ℕ, ’n, la [’k, ’m] (suc ’m)
-    ]),
-    n◆ℕ ⇨ ℕ ⇨ ℕ)
-
-def add n m := ar add' [n, m]
-
-instance : Add Term := ⟨add⟩
-
-/-- 0 + 0 = 0 -/
-def zero_plus_zero_eq_zero :=
-  (ab refl [ℕ, 0],
-    0 + 0 =ₙ 0)
-
-/-- 0 + 1 = 0 -/
-def zero_plus_one_eq_one :=
-  (ab refl [ℕ, 1],
-    0 + 1 =ₙ 1)
-
-/-- 2 + 2 = 4 -/
-def two_plus_two_eq_four :=
-  (ab refl [ℕ, four],
-    two + two =ₙ four)
 
 /-- Boolean -/
 def bool' := sum unit unit
@@ -677,6 +630,60 @@ def eq_trans :=
       ’hab, ’c, ’hbc
     ]),
     α◆𝒰 ⇨ a◆’α ⇨ b◆’α ⇨ c◆’α ⇨ hab◆(eq ’a ’b ’α) ⇨ hbc◆(eq ’b ’c ’α) ⇨ eq ’a ’c ’α)
+
+/-
+### Natural numbers and arithmetic
+-/
+
+instance : Zero Term := ⟨zero⟩
+
+/-- ∃ n : ℕ, n = 0 -/
+def exists_n_eq_zero :=
+  (ab pmk [
+    ℕ, la [’n] (’n =ₙ 0), 0, ab refl [ℕ, 0]
+  ],
+    prod ℕ (la [’n] (’n =ₙ 0)))
+
+/-- Convenience wrapper around `succ` -/
+def suc n := ap succ (ℕ ⇨ ℕ) [n]
+
+/-- 1 exists (yeah I know this is not super exciting) -/
+def one := suc 0
+
+instance : One Term := ⟨one⟩
+
+/-- 2 exists -/
+def two := suc 1
+
+/-- 4 exists -/
+def four := suc (suc two)
+
+/-- Addition -/
+def add' :=
+  (la [’n]
+    (ab nat_rec [
+      const ℕ, ’n, la [’k, ’m] (suc ’m)
+    ]),
+    n◆ℕ ⇨ ℕ ⇨ ℕ)
+
+def add n m := ar add' [n, m]
+
+instance : Add Term := ⟨add⟩
+
+/-- 0 + 0 = 0 -/
+def zero_plus_zero_eq_zero :=
+  (ab refl [ℕ, 0],
+    0 + 0 =ₙ 0)
+
+/-- 0 + 1 = 0 -/
+def zero_plus_one_eq_one :=
+  (ab refl [ℕ, 1],
+    0 + 1 =ₙ 1)
+
+/-- 2 + 2 = 4 -/
+def two_plus_two_eq_four :=
+  (ab refl [ℕ, four],
+    two + two =ₙ four)
 
 /-- n = m → suc n = suc m -/
 def cong_suc :=
@@ -971,7 +978,11 @@ def fib_four_plus_two_eq_four_times_two :=
   (ab refl [ℕ, four + four],
     ar fib [four + two] =ₙ four * two)
 
-/-- Zero is not a successor of any number -/
+/-
+### Irrationality of √2
+-/
+
+/-- Zero is not a successor of any number (uses the large elimination "discriminator trick") -/
 def succ_ne_zero :=
   (la [’n, ’h]
     (ar rw [
@@ -1738,17 +1749,17 @@ def tests := Std.HashMap.ofList [
   ("not_ab_imp_not_a", not_ab_imp_not_a),
   ("a_imp_not_not_a", a_imp_not_not_a),
   ("not_not_not_a_imp_not_a", not_not_not_a_imp_not_a),
-  ("exists_n_eq_zero", exists_n_eq_zero),
   ("forall_a_exists_b_eq_a", forall_a_exists_b_eq_a),
-  ("add'", add'),
-  ("zero_plus_zero_eq_zero", zero_plus_zero_eq_zero),
-  ("zero_plus_one_eq_one", zero_plus_one_eq_one),
-  ("two_plus_two_eq_four", two_plus_two_eq_four),
   ("if'", if'),
   ("false_elim", false_elim),
   ("rw", rw),
   ("eq_symm", eq_symm),
   ("eq_trans", eq_trans),
+  ("exists_n_eq_zero", exists_n_eq_zero),
+  ("add'", add'),
+  ("zero_plus_zero_eq_zero", zero_plus_zero_eq_zero),
+  ("zero_plus_one_eq_one", zero_plus_one_eq_one),
+  ("two_plus_two_eq_four", two_plus_two_eq_four),
   ("add_zero_eq_zero_add", add_zero_eq_zero_add),
   ("succ_add", succ_add),
   ("add_comm", add_comm),
@@ -1773,7 +1784,7 @@ def tests := Std.HashMap.ofList [
 
 def run_test (name : String) (tpair : Term × Term) : IO Unit := do
   let start ← IO.monoNanosNow
-  let res := if ch tpair then "✅" else "❌"
+  let res := if checkuser tpair then "✅" else "❌"
   IO.println s!"{res} {name} {((← IO.monoNanosNow) - start) / 1000}μs"
 
 def main (args : List String) : IO Unit := do
