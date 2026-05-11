@@ -4,7 +4,7 @@ import Std.Data.ExtHashSet
 /-
 # μLean
 
-From 0 to √2 is irrational in less than 2000 lines of code! Includes an elaborator, type checker, and lots of example proofs.
+From 0 to √2 is irrational in less than 2000 lines of code! Includes an type checker, syntactic sugar, and lots of example proofs.
 
 μLean's type system is based on the calculus of constructions and very similar to Lean (obviously), but with fewer features to make the implementation simpler. μLean does not have general inductive types and instead has a few hardcoded inductive types such as the natural numbers. Additionally, μLean has cumulative universes rather than noncumulative universes and propositions in μLean live in `Type` instead of a dedicated `Prop` universe, which avoids a lot of Lean's `Prop` weirdness.
 
@@ -74,9 +74,9 @@ deriving BEq, ReflBEq, LawfulBEq, Lean.ToExpr
 open Term
 
 /-
-## Elaborator
+## Syntactic sugar
 
-μLean satisfies the de Bruijn criterion, which means that we use Lean as a metalanguage and write proofs in a high-level vernacular that gets elaborated (desugared) down to a low-level AST for the type checker. This keeps the type checker itself simple.
+μLean satisfies the de Bruijn criterion, which means that we use Lean as a metalanguage and write proofs in a high-level vernacular that gets desugared down to a low-level AST for the type checker. This keeps the type checker itself simple.
 -/
 
 -- Some helpful macros
