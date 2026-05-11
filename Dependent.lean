@@ -399,33 +399,33 @@ Time for the fun part!
 -/
 
 /-- Helper function for recursing over terms -/
-def term_rec (s : α) (fdep : α → α) (fvar : α → Nat → Term) :=
-  let rec g s
+def term_rec (fvar : Nat → Nat → Term) :=
+  let rec g d
     | var x =>
-      fvar s x
+      fvar d x
     | lam b =>
-      lam (g (fdep s) b)
+      lam (g (d + 1) b)
     | app f φ a =>
-      app (g s f) (g s φ) (g s a)
+      app (g d f) (g d φ) (g d a)
     | α ⇨ β =>
-      g s α ⇨ g (fdep s) β
+      g d α ⇨ g (d + 1) β
     | prod α β =>
-      prod (g s α) (g s β)
+      prod (g d α) (g d β)
     | sum α β =>
-      sum (g s α) (g s β)
+      sum (g d α) (g d β)
     | eq a a' α =>
-      eq (g s a) (g s a') (g s α)
+      eq (g d a) (g d a') (g d α)
     | t =>
       t
-  g s
+  g 0
 
-/-- Increment free variables by 1 -/
-def incr :=
-  term_rec 0 (· + 1) fun d x ↦ var (if d ≤ x then x + 1 else x)
+/-- Increment free variables by `k` -/
+def incr k :=
+  term_rec fun d x ↦ var (if d ≤ x then x + k else x)
 
 /-- Substitute `t'` at index 0 in a term -/
 def sub (t' : Term) :=
-  term_rec (0, t') (fun (d, t') ↦ (d + 1, incr t')) fun (d, t') x ↦ if x == d then t' else var (if d < x then x - 1 else x)
+  term_rec fun d x ↦ if x == d then incr d t' else var (if d < x then x - 1 else x)
 
 /-- The janky evaluator (the input should be well-typed or bad things will happen) -/
 partial def eval : Term → Term
@@ -467,16 +467,16 @@ def cumeq : Term → Term → Bool
   | a, a' => a == eval a'
 
 /-- And finally, the type checker! (the second input term should be well-typed) -/
-def check (env : List Term) : Term → Term → Bool
+partial def check (env : List Term) : Term → Term → Bool
   | var x, α =>
     -- The types in `env` have not been `eval`ed so we need to do that here
-    if _ : x < env.length then cumeq (eval env[x]) α else false
+    if _ : x < env.length then cumeq (eval (incr (x + 1) env[x])) α else false
   | lam b, α ⇨ β =>
-    check (incr <$> (α :: env)) b β
+    check (α :: env) b β
   | app f (α ⇨ β) a, β' =>
     check env f (α ⇨ β) && check env a α && cumeq (eval (sub a β)) β'
   | α ⇨ β, typ u =>
-    check env α (typ u) && check (incr <$> (α :: env)) β (typ u)
+    check env α (typ u) && check (α :: env) β (typ u)
   | prod α β, typ u =>
     -- Dependent products are special so we use `α ⇨ 𝒰` instead of `typ u`
     check env α (typ u) && check env β (α ⇨ 𝒰)
@@ -485,7 +485,12 @@ def check (env : List Term) : Term → Term → Bool
   | eq a a' α, typ u =>
     check env a α && check env a' α && check env α (typ u)
   | t, τ =>
-    cumeq t.dbtype τ
+    -- Try evaluating `τ` to see if it reduces to a matchable form
+    let τ' := eval τ
+    if τ' != τ then
+      check env t τ'
+    else
+      cumeq t.dbtype τ
 
 -- A few test cases
 #guard check [] pmk.dbtype 𝒰₁
@@ -506,14 +511,12 @@ def check (env : List Term) : Term → Term → Bool
 
 #guard check [] fls_rec.dbtype 𝒰₁
 
+-- Former soundness bugs
 #guard !check [] 𝒰₁ 𝒰₁
 
 #guard !check [] 𝒰₁ 𝒰
 
 #guard !check [] (prod 𝒰 𝒰) (prod 𝒰 𝒰)
-
--- TODO: This should pass the type checker?
--- #guard check [] (dbify [] (f◆(ℕ ⇨ ℕ ⇨ 𝒰) ⇨ n◆ℕ ⇨ (ap ’f (ℕ ⇨ ℕ ⇨ 𝒰) [’n]))) 𝒰₁
 
 /-- User-facing type checker -/
 def ch (p : Term × Term) :=
@@ -572,23 +575,17 @@ def a_imp_a :=
   (la [’α, ’a] ’a,
     α◆𝒰 ⇨ a◆’α ⇨ ’α)
 
-#guard ch a_imp_a
-
 /-- A → B → A ∧ B -/
 def a_imp_b_imp_ab :=
   (la [’α, ’β]
     (apb pmk [’α, const ’β]),
     α◆𝒰 ⇨ β◆𝒰 ⇨ ’α ⇨ ’β ⇨ prod ’α (const ’β))
 
-#guard ch a_imp_b_imp_ab
-
 /-- A → B → B ∧ A -/
 def a_imp_b_imp_ba :=
   (la [’α, ’β, ’a, ’b]
     (apb pmk [’β, const ’α, ’b, ’a]),
     α◆𝒰 ⇨ β◆𝒰 ⇨ a◆’α ⇨ b◆’β ⇨ prod ’β (const ’α))
-
-#guard ch a_imp_b_imp_ba
 
 /-- Get first element of product -/
 def fst :=
@@ -598,8 +595,6 @@ def fst :=
     ]),
     α◆𝒰 ⇨ β◆(’α ⇨ 𝒰) ⇨ p◆(prod ’α ’β) ⇨ ’α)
 
-#guard ch fst
-
 /-- ¬(A ∨ B) → ¬A -/
 def not_ab_imp_not_a :=
   (la [’α, ’β, ’f, ’a]
@@ -608,15 +603,11 @@ def not_ab_imp_not_a :=
     ]),
     α◆𝒰 ⇨ β◆𝒰 ⇨ f◆(sum ’α ’β ⇨ ⊥) ⇨ a◆’α ⇨ ⊥)
 
-#guard ch not_ab_imp_not_a
-
 /-- A → ¬¬A -/
 def a_imp_not_not_a :=
   (la [’α, ’a, ’f]
     (ap ’f (’α ⇨ ⊥) [’a]),
     α◆𝒰 ⇨ a◆’α ⇨ f◆(’α ⇨ ⊥) ⇨ ⊥)
-
-#guard ch a_imp_not_not_a
 
 /-- ¬¬¬A → ¬A -/
 def not_not_not_a_imp_not_a :=
@@ -626,16 +617,12 @@ def not_not_not_a_imp_not_a :=
     ]),
     α◆𝒰 ⇨ f◆(((’α ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) ⇨ a◆’α ⇨ ⊥)
 
-#guard ch not_not_not_a_imp_not_a
-
 /-- ∃ n : ℕ, n = 0 -/
 def exists_n_eq_zero :=
   (apb pmk [
     ℕ, la [’n] (eq ’n zero ℕ), zero, apb refl [ℕ, zero]
   ],
     prod ℕ (la [’n] (eq ’n zero ℕ)))
-
-#guard ch exists_n_eq_zero
 
 /-- ∀ a : A, ∃ b : A, b = a -/
 def forall_a_exists_b_eq_a :=
@@ -645,25 +632,17 @@ def forall_a_exists_b_eq_a :=
     ]),
     α◆𝒰 ⇨ a◆’α ⇨ prod ’α (la [’b] (eq ’b ’a ’α)))
 
-#guard ch forall_a_exists_b_eq_a
-
 /-- Convenience wrapper around `succ` -/
 def suc n := ap succ (ℕ ⇨ ℕ) [n]
 
 /-- 1 exists (yeah I know this is not super exciting) -/
 def one := suc zero
 
-#guard ch (one, ℕ)
-
 /-- 2 exists -/
 def two := suc one
 
-#guard ch (two, ℕ)
-
 /-- 4 exists -/
 def four := suc (suc two)
-
-#guard ch (four, ℕ)
 
 /-- Addition -/
 def add' :=
@@ -673,8 +652,6 @@ def add' :=
     ]),
     n◆ℕ ⇨ ℕ ⇨ ℕ)
 
-#guard ch add'
-
 def add n m := apr add' [n, m]
 
 /-- 0 + 0 = 0 -/
@@ -682,28 +659,15 @@ def zero_plus_zero_eq_zero :=
   (apb refl [ℕ, zero],
     eq (add zero zero) zero ℕ)
 
-#guard ch zero_plus_zero_eq_zero
-
 /-- 0 + 1 = 0 -/
 def zero_plus_one_eq_one :=
   (apb refl [ℕ, one],
     eq (add zero one) one ℕ)
 
-#guard ch zero_plus_one_eq_one
-
-/-- 2 + 0 = 2 -/
-def two_plus_zero_eq_two :=
-  (apb refl [ℕ, two],
-    eq (add two zero) two ℕ)
-
-#guard ch two_plus_zero_eq_two
-
 /-- 2 + 2 = 4 -/
 def two_plus_two_eq_four :=
   (apb refl [ℕ, four],
     eq (add two two) four ℕ)
-
-#guard ch two_plus_two_eq_four
 
 /-- Boolean -/
 def bool' := sum unit unit
@@ -716,15 +680,11 @@ def if' :=
     ]),
     α◆𝒰 ⇨ b◆bool' ⇨ a◆’α ⇨ a'◆’α ⇨ ’α)
 
-#guard ch if'
-
 /-- ⊥ implies anything -/
 def false_elim :=
   (la [’α]
     (apb fls_rec [const ’α]),
     α◆𝒰 ⇨ ⊥ ⇨ ’α)
-
-#guard ch false_elim
 
 /-- Rewrite with an equality -/
 def rw :=
@@ -736,8 +696,6 @@ def rw :=
     ]),
     α◆𝒰 ⇨ a◆’α ⇨ b◆’α ⇨ p◆(’α ⇨ 𝒰) ⇨ h◆(eq ’a ’b ’α) ⇨ ha◆(ap ’p (’α ⇨ 𝒰) [’a]) ⇨ ap ’p (’α ⇨ 𝒰) [’b])
 
-#guard ch rw
-
 /-- a = b → b = a -/
 def eq_symm :=
   (la [’α, ’a, ’b, ’h]
@@ -747,8 +705,6 @@ def eq_symm :=
       apb refl [’α, ’a], ’b, ’h
     ]),
     α◆𝒰 ⇨ a◆’α ⇨ b◆’α ⇨ h◆(eq ’a ’b ’α) ⇨ eq ’b ’a ’α)
-
-#guard ch eq_symm
 
 /-- a = b → b = c → a = c -/
 def eq_trans :=
@@ -760,8 +716,6 @@ def eq_trans :=
     ]),
     α◆𝒰 ⇨ a◆’α ⇨ b◆’α ⇨ c◆’α ⇨ hab◆(eq ’a ’b ’α) ⇨ hbc◆(eq ’b ’c ’α) ⇨ eq ’a ’c ’α)
 
-#guard ch eq_trans
-
 /-- n = m → suc n = suc m -/
 def cong_suc :=
   (la [’n, ’m, ’h]
@@ -771,8 +725,6 @@ def cong_suc :=
       ’h, apb refl [ℕ, suc ’n]
     ]),
     n◆ℕ ⇨ m◆ℕ ⇨ h◆(eq ’n ’m ℕ) ⇨ eq (suc ’n) (suc ’m) ℕ)
-
-#guard ch cong_suc
 
 /-- n = m → k + n = k + m -/
 def cong_add_l :=
@@ -784,8 +736,6 @@ def cong_add_l :=
     ]),
     n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ h◆(eq ’n ’m ℕ) ⇨ eq (add ’k ’n) (add ’k ’m) ℕ)
 
-#guard ch cong_add_l
-
 /-- n = m → n + k = m + k -/
 def cong_add_r :=
   (la [’n, ’m, ’k, ’h]
@@ -795,8 +745,6 @@ def cong_add_r :=
       ’h, apb refl [ℕ, add ’n ’k]
     ]),
     n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ h◆(eq ’n ’m ℕ) ⇨ eq (add ’n ’k) (add ’m ’k) ℕ)
-
-#guard ch cong_add_r
 
 /-- n = 0 + n -/
 def zero_add :=
@@ -813,15 +761,11 @@ def zero_add :=
     ]),
     n◆ℕ ⇨ eq ’n (add zero ’n) ℕ)
 
-#guard ch zero_add
-
 /-- n + 0 = 0 + n -/
 def add_zero_eq_zero_add :=
   (la [’n]
     (apr zero_add [’n]),
     n◆ℕ ⇨ eq (add ’n zero) (add zero ’n) ℕ)
-
-#guard ch add_zero_eq_zero_add
 
 /-- succ (m + n) = (succ m) + n -/
 def succ_add :=
@@ -838,8 +782,6 @@ def succ_add :=
       ’n
     ]),
     m◆ℕ ⇨ n◆ℕ ⇨ eq (suc (add ’m ’n)) (add (suc ’m) ’n) ℕ)
-
-#guard ch succ_add
 
 /-- n + m = m + n -/
 def add_comm :=
@@ -862,8 +804,6 @@ def add_comm :=
     ]),
     n◆ℕ ⇨ m◆ℕ ⇨ eq (add ’n ’m) (add ’m ’n) ℕ)
 
-#guard ch add_comm
-
 /-- n + (m + k) = (n + m) + k -/
 def add_assoc :=
   (la [’n, ’m, ’k]
@@ -880,14 +820,10 @@ def add_assoc :=
     ]),
     n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ eq (add ’n (add ’m ’k)) (add (add ’n ’m) ’k) ℕ)
 
-#guard ch add_assoc
-
 /-- Predecessor -/
 def pred :=
   (apb nat_rec [const ℕ, zero, la [’n, ’m] ’n],
     n◆ℕ ⇨ ℕ)
-
-#guard ch pred
 
 /-- Subtraction -/
 def subt :=
@@ -897,21 +833,15 @@ def subt :=
     ]),
     n◆ℕ ⇨ ℕ ⇨ ℕ)
 
-#guard ch subt
-
 /-- 4 - 2 = 2 -/
 def four_minus_two_eq_two :=
   (apb refl [ℕ, two],
     eq (apr subt [four, two]) two ℕ)
 
-#guard ch four_minus_two_eq_two
-
 /-- 2 - 4 = 0 -/
 def two_minus_four_eq_zero :=
   (apb refl [ℕ, zero],
     eq (apr subt [two, four]) zero ℕ)
-
-#guard ch two_minus_four_eq_zero
 
 /-- Multiplication -/
 def mul' :=
@@ -921,22 +851,16 @@ def mul' :=
     ]),
     n◆ℕ ⇨ ℕ ⇨ ℕ)
 
-#guard ch mul'
-
 def mul n m := apr mul' [n, m]
 
 /-- 16 exists -/
 def sixteen :=
   suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc four)))))))))))
 
-#guard ch (sixteen, ℕ)
-
 /-- 4 * 4 = 16 -/
 def four_times_four_eq_sixteen :=
   (apb refl [ℕ, sixteen],
     eq (mul four four) sixteen ℕ)
-
-#guard ch four_times_four_eq_sixteen
 
 /-- 0 * n = 0 -/
 def zero_mul :=
@@ -953,8 +877,6 @@ def zero_mul :=
       ’n
     ]),
     n◆ℕ ⇨ eq (mul zero ’n) zero ℕ)
-
-#guard ch zero_mul
 
 /-- (succ m) * n = n + m * n -/
 def succ_mul :=
@@ -1016,9 +938,6 @@ def succ_mul :=
     ]),
     m◆ℕ ⇨ n◆ℕ ⇨ eq (mul (suc ’m) ’n) (add ’n (mul ’m ’n)) ℕ)
 
--- This proof takes a long time to check
--- #guard ch succ_mul
-
 def mul_comm :=
   (la [’n, ’m]
     (apb nat_rec [
@@ -1036,9 +955,6 @@ def mul_comm :=
     ]),
     n◆ℕ ⇨ m◆ℕ ⇨ eq (mul ’n ’m) (mul ’m ’n) ℕ)
 
--- This proof takes a long time to check
--- #guard ch mul_comm
-
 /-- Factorial function -/
 def fac :=
   (la [’n]
@@ -1048,14 +964,10 @@ def fac :=
     ]),
     n◆ℕ ⇨ ℕ)
 
-#guard ch fac
-
 /-- 4 + 2 = 3! -/
 def four_plus_two_eq_three_factorial :=
   (apb refl [ℕ, add four two],
     eq (apr fac [suc two]) (add four two) ℕ)
-
-#guard ch four_plus_two_eq_three_factorial
 
 def nat_pair := prod ℕ (const ℕ)
 
@@ -1066,8 +978,6 @@ def nat_snd :=
       ℕ, const ℕ, const ℕ, la [’a, ’b] ’b, ’p
     ]),
     p◆nat_pair ⇨ ℕ)
-
-#guard ch nat_snd
 
 /-- Fibonacci function -/
 def fib :=
@@ -1087,14 +997,10 @@ def fib :=
     ]),
     n◆ℕ ⇨ ℕ)
 
-#guard ch fib
-
 /-- fib (4 + 2) = 4 * 2 -/
 def fib_four_plus_two_eq_four_times_two :=
   (apb refl [ℕ, add four four],
     eq (apr fib [add four two]) (mul four two) ℕ)
-
-#guard ch fib_four_plus_two_eq_four_times_two
 
 /-- Zero is not a successor of any number -/
 def succ_ne_zero :=
@@ -1106,7 +1012,99 @@ def succ_ne_zero :=
     ]),
     n◆ℕ ⇨ h◆(eq (suc ’n) zero ℕ) ⇨ ⊥)
 
-#guard ch succ_ne_zero
+/-- Successor is injective -/
+def suc_inj :=
+  (la [’n, ’m, ’h]
+    (apr rw [
+      ℕ, suc ’n, suc ’m,
+      la [’x] (eq ’n (apr pred [’x]) ℕ),
+      ’h, apb refl [ℕ, ’n]
+    ]),
+    n◆ℕ ⇨ m◆ℕ ⇨ h◆(eq (suc ’n) (suc ’m) ℕ) ⇨ eq ’n ’m ℕ)
+
+/-- n + k = m + k → n = m -/
+def add_right_cancel :=
+  (la [’n, ’m, ’k]
+    (apb nat_rec [
+      la [’k] (eq (add ’n ’k) (add ’m ’k) ℕ ⇨ eq ’n ’m ℕ),
+      la [’h] ’h,
+      la [’k, ’ih, ’h]
+        (ap ’ih (eq (add ’n ’k) (add ’m ’k) ℕ ⇨ eq ’n ’m ℕ) [
+          apr suc_inj [add ’n ’k, add ’m ’k, ’h]
+        ]),
+      ’k
+    ]),
+    n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ eq (add ’n ’k) (add ’m ’k) ℕ ⇨ eq ’n ’m ℕ)
+
+/-- even n := ∃ k, n = k + k -/
+def even n :=
+  prod ℕ (la [’k] (eq n (add ’k ’k) ℕ))
+
+/-- odd n := ∃ k, n = suc(k + k) -/
+def odd n :=
+  prod ℕ (la [’k] (eq n (suc (add ’k ’k)) ℕ))
+
+/-- 0 is even -/
+def even_zero :=
+  (apb pmk [
+    ℕ, la [’k] (eq zero (add ’k ’k) ℕ), zero, apb refl [ℕ, zero]
+  ],
+    even zero)
+
+/-- If n is even, then succ n is odd -/
+def even_imp_succ_odd :=
+  (la [’n, ’h]
+    (apb prod_rec [
+      ℕ, la [’k] (eq ’n (add ’k ’k) ℕ), const (odd (suc ’n)),
+      la [’k, ’hk]
+        (apb pmk [
+          ℕ, la [’j] (eq (suc ’n) (suc (add ’j ’j)) ℕ), ’k,
+          apr cong_suc [’n, add ’k ’k, ’hk]
+        ]),
+      ’h
+    ]),
+    n◆ℕ ⇨ even ’n ⇨ odd (suc ’n))
+
+/-- If n is odd, then succ n is even -/
+def odd_imp_succ_even :=
+  (la [’n, ’h]
+    (apb prod_rec [
+      ℕ, la [’k] (eq ’n (suc (add ’k ’k)) ℕ), const (even (suc ’n)),
+      la [’k, ’hk]
+        (apb pmk [
+          ℕ, la [’j] (eq (suc ’n) (add ’j ’j) ℕ),
+          suc ’k,
+          apr eq_trans [
+            ℕ, suc ’n, suc (suc (add ’k ’k)), add (suc ’k) (suc ’k),
+            apr cong_suc [’n, suc (add ’k ’k), ’hk],
+            apr eq_trans [
+              ℕ, suc (suc (add ’k ’k)), suc (add (suc ’k) ’k), add (suc ’k) (suc ’k),
+              apr cong_suc [suc (add ’k ’k), add (suc ’k) ’k, apr succ_add [’k, ’k]],
+              apb refl [ℕ, add (suc ’k) (suc ’k)]
+            ]
+          ]
+        ]),
+      ’h
+    ]),
+    n◆ℕ ⇨ odd ’n ⇨ even (suc ’n))
+
+/-- Every number is even or odd -/
+def even_or_odd :=
+  (la [’n]
+    (apb nat_rec [
+      la [’n] (sum (even ’n) (odd ’n)),
+      apb inl [even zero, odd zero, apr even_zero []],
+      la [’n, ’ih]
+        (apb sum_rec [
+          even ’n, odd ’n,
+          const (sum (even (suc ’n)) (odd (suc ’n))),
+          la [’he] (apb inr [even (suc ’n), odd (suc ’n), apr even_imp_succ_odd [’n, ’he]]),
+          la [’ho] (apb inl [even (suc ’n), odd (suc ’n), apr odd_imp_succ_even [’n, ’ho]]),
+          ’ih
+        ]),
+      ’n
+    ]),
+    n◆ℕ ⇨ sum (even ’n) (odd ’n))
 
 /-- √2 is irrational -/
 def sqrt_two_irrational :=
@@ -1121,8 +1119,6 @@ def pow' :=
     ]),
     n◆ℕ ⇨ ℕ ⇨ ℕ)
 
-#guard ch pow'
-
 def pow n m := apr pow' [n, m]
 
 /-- 2 ^ 4 = 16 -/
@@ -1130,19 +1126,60 @@ def two_to_the_four_eq_sixteen :=
   (apb refl [ℕ, sixteen],
     eq (pow two four) sixteen ℕ)
 
-#guard ch two_to_the_four_eq_sixteen
-
 /-- Fermat's last theorem -/
 def fermat :=
   (name "sorry",
     a◆ℕ ⇨ b◆ℕ ⇨ c◆ℕ ⇨ n◆ℕ ⇨ (eq ’a zero ℕ ⇨ ⊥) ⇨ (eq ’b zero ℕ ⇨ ⊥) ⇨ (eq ’c zero ℕ ⇨ ⊥) ⇨ (eq ’n zero ℕ ⇨ ⊥) ⇨ (eq ’n one ℕ ⇨ ⊥) ⇨ (eq ’n two ℕ ⇨ ⊥) ⇨ eq (add (pow ’a ’n) (pow ’b ’n)) (pow ’c ’n) ℕ ⇨ ⊥)
 
--- #guard ch fermat
+def tests := Std.HashMap.ofList [
+  ("a_imp_a", a_imp_a),
+  ("a_imp_b_imp_ab", a_imp_b_imp_ab),
+  ("a_imp_b_imp_ba", a_imp_b_imp_ba),
+  ("not_ab_imp_not_a", not_ab_imp_not_a),
+  ("a_imp_not_not_a", a_imp_not_not_a),
+  ("not_not_not_a_imp_not_a", not_not_not_a_imp_not_a),
+  ("exists_n_eq_zero", exists_n_eq_zero),
+  ("forall_a_exists_b_eq_a", forall_a_exists_b_eq_a),
+  ("add'", add'),
+  ("zero_plus_zero_eq_zero", zero_plus_zero_eq_zero),
+  ("zero_plus_one_eq_one", zero_plus_one_eq_one),
+  ("two_plus_two_eq_four", two_plus_two_eq_four),
+  ("if'", if'),
+  ("false_elim", false_elim),
+  ("rw", rw),
+  ("eq_symm", eq_symm),
+  ("eq_trans", eq_trans),
+  ("add_zero_eq_zero_add", add_zero_eq_zero_add),
+  ("succ_add", succ_add),
+  ("add_comm", add_comm),
+  ("add_assoc", add_assoc),
+  ("pred", pred),
+  ("subt", subt),
+  ("four_minus_two_eq_two", four_minus_two_eq_two),
+  ("two_minus_four_eq_zero", two_minus_four_eq_zero),
+  ("mul'", mul'),
+  ("four_times_four_eq_sixteen", four_times_four_eq_sixteen),
+  ("succ_mul", succ_mul),
+  ("mul_comm", mul_comm),
+  ("fac", fac),
+  ("four_plus_two_eq_three_factorial", four_plus_two_eq_three_factorial),
+  ("fib", fib),
+  ("fib_four_plus_two_eq_four_times_two", fib_four_plus_two_eq_four_times_two),
+  ("succ_ne_zero", succ_ne_zero),
+  ("pow'", pow'),
+  ("two_to_the_four_eq_sixteen", two_to_the_four_eq_sixteen),
+]
 
--- Takes 5 seconds to run when compiled
-def main : IO Unit := do
-  -- IO.FS.writeFile "mul_comm" <| serialize mul_comm
-  let start ← IO.monoMsNow
-  IO.println <| ch mul_comm
-  -- Should print out around 2700ms
-  IO.println s!"Took {(← IO.monoMsNow) - start}ms to check mul_comm"
+def run_test (name : String) (tpair : Term × Term) : IO Unit := do
+  let start ← IO.monoNanosNow
+  let res := if ch tpair then "passed" else "FAILED"
+  IO.println s!"{name} {res} {((← IO.monoNanosNow) - start) / 1000}μs"
+
+def main (args : List String) : IO Unit := do
+  if h : 0 < args.length then
+    if h : args[0] ∈ tests then
+      run_test args[0] tests[args[0]]
+    else
+      IO.println "Test name not found"
+  else
+    tests.forM run_test
