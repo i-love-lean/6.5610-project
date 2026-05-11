@@ -1002,20 +1002,6 @@ def suc_inj :=
     ]),
     n◆ℕ ⇨ m◆ℕ ⇨ h◆(suc ’n =ₙ suc ’m) ⇨ ’n =ₙ ’m)
 
-/-- n + k = m + k → n = m -/
-def add_right_cancel :=
-  (la [’n, ’m, ’k]
-    (ab nat_rec [
-      la [’k] (’n + ’k =ₙ ’m + ’k ⇨ ’n =ₙ ’m),
-      la [’h] ’h,
-      la [’k, ’ih, ’h]
-        (ap ’ih (’n + ’k =ₙ ’m + ’k ⇨ ’n =ₙ ’m) [
-          ar suc_inj [’n + ’k, ’m + ’k, ’h]
-        ]),
-      ’k
-    ]),
-    n◆ℕ ⇨ m◆ℕ ⇨ k◆ℕ ⇨ ’n + ’k =ₙ ’m + ’k ⇨ ’n =ₙ ’m)
-
 /-- even n := ∃ k, n = k + k -/
 def even n :=
   prod ℕ (la [’k'] (n =ₙ ’k' + ’k'))
@@ -1073,7 +1059,7 @@ def even_or_odd :=
   (la [’n]
     (ab nat_rec [
       la [’n] (sum (even ’n) (odd ’n)),
-      ab inl [even 0, odd 0, ar even_zero []],
+      ab inl [even 0, odd 0, even_zero.1],
       la [’n, ’ih]
         (ab sum_rec [
           even ’n, odd ’n,
@@ -1091,41 +1077,6 @@ def mul_two_eq_add :=
   (la [’n]
     (ar mul_comm [two, ’n]),
     n◆ℕ ⇨ two * ’n =ₙ ’n + ’n)
-
-/-- n * n = 0 → n = 0 -/
-def sq_zero_imp_zero :=
-  (la [’n]
-    (ab nat_rec [
-      la [’n] (’n * ’n =ₙ 0 ⇨ ’n =ₙ 0),
-      la [’h] (ab refl [ℕ, 0]),
-      la [’n, ’ih, ’h]
-        (ar false_elim [
-          suc ’n =ₙ 0,
-          ar succ_ne_zero [
-            ’n + ’n * suc ’n,
-            ar eq_trans [
-              ℕ, suc (’n + ’n * suc ’n), suc ’n * suc ’n, 0,
-              ar eq_symm [
-                ℕ, suc ’n * suc ’n, suc (’n + ’n * suc ’n),
-                ar eq_trans [
-                  ℕ, suc ’n * suc ’n,
-                  ’n + ’n * suc ’n,
-                  suc (’n + ’n * suc ’n),
-                  ar succ_mul [’n, suc ’n],
-                  ar eq_symm [
-                    ℕ, suc (’n + ’n * suc ’n),
-                    ’n + ’n * suc ’n,
-                    ar succ_add [’n, ’n * suc ’n]
-                  ]
-                ]
-              ],
-              ’h
-            ]
-          ]
-        ]),
-      ’n
-    ]),
-    n◆ℕ ⇨ ’n * ’n =ₙ 0 ⇨ ’n =ₙ 0)
 
 /-- k + k ≠ succ (j + j) -/
 def even_ne_odd_base :=
