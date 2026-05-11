@@ -829,8 +829,7 @@ def mul n m := ar mul' [n, m]
 instance : Mul Term := ⟨mul⟩
 
 /-- 16 exists -/
-def sixteen :=
-  suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc four)))))))))))
+def sixteen := suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc four)))))))))))
 
 /-- 4 * 4 = 16 -/
 def four_times_four_eq_sixteen :=
@@ -941,7 +940,7 @@ def fac :=
     n◆ℕ ⇨ ℕ)
 
 /-- 4 + 2 = 3! -/
-def four_plus_two_eq_three_factorial :=
+def four_plus_two_eq_three_fac :=
   (ab refl [ℕ, four + two],
     ar fac [suc two] =ₙ four + two)
 
@@ -973,10 +972,10 @@ def fib :=
     ]),
     n◆ℕ ⇨ ℕ)
 
-/-- fib (4 + 2) = 4 * 2 -/
-def fib_four_plus_two_eq_four_times_two :=
-  (ab refl [ℕ, four + four],
-    ar fib [four + two] =ₙ four * two)
+/-- fib 5 = 5 -/
+def fib_five_eq_five :=
+  (ab refl [ℕ, suc four],
+    ar fib [suc four] =ₙ suc four)
 
 /-
 ### Irrationality of √2
@@ -1232,7 +1231,8 @@ def double_inj :=
                       ar succ_add [’n, ’n],
                       ar suc_inj [suc ’n + ’n, suc ’p + ’p, ’h]
                     ],
-                    ar eq_symm [ℕ, suc (’p + ’p), suc ’p + ’p,
+                    ar eq_symm [
+                      ℕ, suc (’p + ’p), suc ’p + ’p,
                       ar succ_add [’p, ’p]]
                   ]
                 ]
@@ -1350,9 +1350,11 @@ def odd_sq_odd :=
                     ℕ, suc (’k + ’k) + (’j + ’j),
                     suc ((’k + ’k) + (’j + ’j)),
                     suc ((’k + ’j) + (’k + ’j)),
-                    ar eq_symm [ℕ, suc ((’k + ’k) + (’j + ’j)),
+                    ar eq_symm [
+                      ℕ, suc ((’k + ’k) + (’j + ’j)),
                       suc (’k + ’k) + (’j + ’j),
-                      ar succ_add [’k + ’k, ’j + ’j]],
+                      ar succ_add [’k + ’k, ’j + ’j]
+                    ],
                     ar cong_suc [
                       (’k + ’k) + (’j + ’j),
                       (’k + ’j) + (’k + ’j),
@@ -1428,7 +1430,8 @@ def double_mul :=
                 ar rw [
                   ℕ, suc ’a + ’a, suc (’a + ’a),
                   la [’x] ((suc ’a + ’a) * ’b =ₙ ’x * ’b),
-                  ar eq_symm [ℕ, suc (’a + ’a), suc ’a + ’a,
+                  ar eq_symm [
+                    ℕ, suc (’a + ’a), suc ’a + ’a,
                     ar succ_add [’a, ’a]
                   ],
                   ab refl [ℕ, (suc ’a + ’a) * ’b]
@@ -1684,7 +1687,7 @@ def pow n m := ar pow' [n, m]
 instance : Pow Term Term := ⟨pow⟩
 
 /-- 2 ^ 4 = 16 -/
-def two_to_the_four_eq_sixteen :=
+def two_pow_four_eq_sixteen :=
   (ab refl [ℕ, sixteen],
     two ^ four =ₙ sixteen)
 
@@ -1693,6 +1696,7 @@ def fermat :=
   (name "sorry",
     a◆ℕ ⇨ b◆ℕ ⇨ c◆ℕ ⇨ n◆ℕ ⇨ (’a =ₙ 0 ⇨ ⊥) ⇨ (’b =ₙ 0 ⇨ ⊥) ⇨ (’c =ₙ 0 ⇨ ⊥) ⇨ (’n =ₙ 0 ⇨ ⊥) ⇨ (’n =ₙ 1 ⇨ ⊥) ⇨ (’n =ₙ two ⇨ ⊥) ⇨ ’a ^ ’n + ’b ^ ’n =ₙ ’c ^ ’n ⇨ ⊥)
 
+/-- Can generate a full list with `tail +500 Dependent.lean | rg "^def ([^ ]*) :=\$" -or '  ("$1", $1),'` -/
 def tests := Std.HashMap.ofList [
   ("a_imp_a", a_imp_a),
   ("a_imp_b_imp_ab", a_imp_b_imp_ab),
@@ -1724,21 +1728,28 @@ def tests := Std.HashMap.ofList [
   ("succ_mul", succ_mul),
   ("mul_comm", mul_comm),
   ("fac", fac),
-  ("four_plus_two_eq_three_factorial", four_plus_two_eq_three_factorial),
+  ("four_plus_two_eq_three_fac", four_plus_two_eq_three_fac),
   ("fib", fib),
-  ("fib_four_plus_two_eq_four_times_two", fib_four_plus_two_eq_four_times_two),
+  ("fib_five_eq_five", fib_five_eq_five),
   ("succ_ne_zero", succ_ne_zero),
   ("sqrt_two_irrational", sqrt_two_irrational),
   ("pow'", pow'),
-  ("two_to_the_four_eq_sixteen", two_to_the_four_eq_sixteen),
+  ("two_pow_four_eq_sixteen", two_pow_four_eq_sixteen),
 ]
+
+def leftpad s n :=
+  "".pushn ' ' (n - s.length) ++ s
+
+def print_line (a b c d : String) :=
+  IO.println s!"{a}{leftpad b 30}{leftpad c 10}{leftpad d 10}"
 
 def run_test (name : String) (tpair : Term × Term) : IO Unit := do
   let start ← IO.monoNanosNow
   let res := if checkuser tpair then "✅" else "❌"
-  IO.println s!"{res} {name} {((← IO.monoNanosNow) - start) / 1000}μs"
+  print_line res name s!"{((← IO.monoNanosNow) - start) / 1000}" s!"{tpair.1.sizeOf}"
 
 def main (args : List String) : IO Unit := do
+  print_line "  " "Test" "Time (μs)" "Nodes"
   if h : 0 < args.length then
     if h : args[0] ∈ tests then
       run_test args[0] tests[args[0]]
