@@ -1,0 +1,202 @@
+;; ---------------------------------------------------------------------------
+;; cert_verifier.lurk
+;;
+;; Generic certified type-checker for an indexed-AST proof dump.
+;;
+;; The dump is expected to define:
+;;   N           — total number of nodes in the term table.
+;;   term-table  — balanced tree mapping index -> node structure.
+;;                 Node encodings:
+;;                   var x         -> (0n x)
+;;                   lam b         -> (1n b-idx)
+;;                   app f phi a   -> (2n f-idx phi-idx a-idx)
+;;                   typ u         -> (3n u)
+;;                   fn alpha beta -> (4n alpha-idx beta-idx)
+;;                   fls           -> (21n)
+;;                 (more constructors added as we scale up.)
+;;   eval-table  — balanced tree mapping index -> result-index of `eval(node i)`.
+;;   rule-table  — balanced tree mapping index -> rule entry justifying the
+;;                 corresponding eval-table entry.
+;;                 Rule entry encoding: `(rule-tag output-idx witness-idxs...)`
+;;                 Tags currently supported (bare minimum):
+;;                   0  id        — node is in normal form; output-idx == self
+;;                   1  congLam   — input is (1n b);   witness w0 = E[b]
+;;                   2  congFn    — input is (4n a b); witnesses w0=E[a], w1=E[b]
+;;                   3  congApp   — input is (2n f phi a); witnesses w0..w2
+;;
+;; Entry points used by per-test asserts:
+;;   (validate-trace 0)                  — validate every rule entry.
+;;   (check-cert env t-idx tau-idx)      — type-check.
+;; ---------------------------------------------------------------------------
+
+;; ---------- balanced-tree lookup ----------
+;; A static balanced binary tree of `size` items.  Internal nodes are
+;; (cons LEFT RIGHT); leaves are bare values.  Lookup splits the index
+;; range half/half.
+!(defrec tree-lookup (lambda (tree i size)
+  (if (= size 1)
+    tree
+    (let ((half (/ size 2)))
+      (if (< i half)
+        (tree-lookup (car tree) i half)
+        (tree-lookup (cdr tree) (- i half) (- size half)))))))
+
+;; ---------- list / boolean helpers ----------
+!(def arg1 (lambda (x) (car (cdr x))))
+!(def arg2 (lambda (x) (car (cdr (cdr x)))))
+!(def arg3 (lambda (x) (car (cdr (cdr (cdr x))))))
+!(def arg4 (lambda (x) (car (cdr (cdr (cdr (cdr x)))))))
+!(def arg5 (lambda (x) (car (cdr (cdr (cdr (cdr (cdr x))))))))
+!(def arg6 (lambda (x) (car (cdr (cdr (cdr (cdr (cdr (cdr x)))))))))
+!(def arg7 (lambda (x) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr x))))))))))
+!(def arg8 (lambda (x) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr x)))))))))))
+!(def arg9 (lambda (x) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr x))))))))))))
+!(def arg10 (lambda (x) (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr x)))))))))))))
+!(def and (lambda (x y) (if x (if y t nil) nil)))
+!(def or (lambda (x y) (if x t (if y t nil))))
+!(defrec geti (lambda (xs i) (if (= i 0) (car xs) (geti (cdr xs) (- i 1)))))
+!(defrec len (lambda (xs) (if (eq xs nil) 0 (+ 1 (len (cdr xs))))))
+
+;; ---------- table accessors ----------
+!(def T (lambda (i) (tree-lookup term-table i N)))
+!(def E (lambda (i) (tree-lookup eval-table i N)))
+!(def R (lambda (i) (tree-lookup rule-table i N)))
+
+;; ---------- dbtype lookup ----------
+;; (lookup-dbtype tag alist) — walks the dbtype association list returning
+;; the index of the type for the given built-in constructor tag, or nil.
+!(defrec lookup-dbtype (lambda (tag alist)
+  (if (eq alist nil)
+    nil
+    (let ((entry (car alist)))
+      (if (= (car entry) tag)
+        (cdr entry)
+        (lookup-dbtype tag (cdr alist)))))))
+
+;; ---------- shape predicates ----------
+;; (is-app-k-of k op idx)  — true iff T[idx] is `app(app(...(op _ _)... _ _) _ _)`
+;; nested exactly k times (i.e. walking arg1 k times finds tag op).
+!(defrec is-app-k-of (lambda (k op idx)
+  (let ((nd (T idx)))
+    (if (= k 0)
+      (= (car nd) op)
+      (if (= (car nd) 2n)
+        (is-app-k-of (- k 1) op (arg1 nd))
+        nil)))))
+
+;; ---------- structural compare with implicit `sub` ----------
+;; (eq-sub-by d a-idx b-idx c-idx)
+;; True iff T[c-idx] == sub T[a-idx] (T[b-idx] at depth d).
+;; Sub semantics: at depth d, var x becomes
+;;   - (incr-by-d a) if x == d
+;;   - var (x-1)     if x > d
+;;   - var x         if x < d
+;; (forward declaration; defined below alongside eq-incr-by)
+
+;; ---------- structural compare with implicit `incr k` ----------
+;; (eq-incr-by k d a-idx b-idx)
+;; True iff T[a-idx] equals (incr-by-k T[b-idx]), where the recursion is
+;; currently at depth d (so a `var x` in T[b] becomes `var (x+k)` if d <= x,
+;; otherwise `var x`).  Leaves fall back to index equality (relies on hash-
+;; consing in the dump generator).
+!(defrec eq-incr-by (lambda (k d a-idx b-idx)
+  (let ((a (T a-idx))
+        (b (T b-idx)))
+    (let ((tag-b (car b)))
+      (if (= tag-b 0n)
+        (let ((x (arg1 b)))
+          (and (= (car a) 0n)
+               (= (arg1 a) (if (<= d x) (+ x k) x))))
+      (if (= tag-b 1n)
+        (and (= (car a) 1n)
+             (eq-incr-by k (+ d 1) (arg1 a) (arg1 b)))
+      (if (= tag-b 4n)
+        (and (= (car a) 4n)
+             (and (eq-incr-by k d (arg1 a) (arg1 b))
+                  (eq-incr-by k (+ d 1) (arg2 a) (arg2 b))))
+      (if (= tag-b 2n)
+        (and (= (car a) 2n)
+             (and (eq-incr-by k d (arg1 a) (arg1 b))
+                  (and (eq-incr-by k d (arg2 a) (arg2 b))
+                       (eq-incr-by k d (arg3 a) (arg3 b)))))
+      (if (= tag-b 5n)                      ;; prod
+        (and (= (car a) 5n)
+             (and (eq-incr-by k d (arg1 a) (arg1 b))
+                  (eq-incr-by k d (arg2 a) (arg2 b))))
+      (if (= tag-b 8n)                      ;; sum
+        (and (= (car a) 8n)
+             (and (eq-incr-by k d (arg1 a) (arg1 b))
+                  (eq-incr-by k d (arg2 a) (arg2 b))))
+      (if (= tag-b 12n)                     ;; eq
+        (and (= (car a) 12n)
+             (and (eq-incr-by k d (arg1 a) (arg1 b))
+                  (and (eq-incr-by k d (arg2 a) (arg2 b))
+                       (eq-incr-by k d (arg3 a) (arg3 b)))))
+      ;; default: leaves (typ, fls, ...).  No vars to shift.
+      (= a-idx b-idx)
+      )))))))))))
+
+;; ---------- eq-sub-by ----------
+!(defrec eq-sub-by (lambda (d a-idx b-idx c-idx)
+  (let ((b (T b-idx)))
+    (let ((tag-b (car b)))
+      (if (= tag-b 0n)                      ;; b is var x
+        (let ((x (arg1 b)))
+          (if (= x d)
+            ;; replace with incr d a
+            (eq-incr-by d 0 c-idx a-idx)
+            ;; else: var (if d < x then x-1 else x)
+            (let ((expected (if (< d x) (- x 1) x))
+                  (c (T c-idx)))
+              (and (= (car c) 0n)
+                   (= (arg1 c) expected)))))
+      (if (= tag-b 1n)                      ;; b is lam
+        (let ((c (T c-idx)))
+          (and (= (car c) 1n)
+               (eq-sub-by (+ d 1) a-idx (arg1 b) (arg1 c))))
+      (if (= tag-b 4n)                      ;; b is fn
+        (let ((c (T c-idx)))
+          (and (= (car c) 4n)
+               (and (eq-sub-by d a-idx (arg1 b) (arg1 c))
+                    (eq-sub-by (+ d 1) a-idx (arg2 b) (arg2 c)))))
+      (if (= tag-b 2n)                      ;; b is app
+        (let ((c (T c-idx)))
+          (and (= (car c) 2n)
+               (and (eq-sub-by d a-idx (arg1 b) (arg1 c))
+                    (and (eq-sub-by d a-idx (arg2 b) (arg2 c))
+                         (eq-sub-by d a-idx (arg3 b) (arg3 c))))))
+      (if (= tag-b 5n)                      ;; b is prod
+        (let ((c (T c-idx)))
+          (and (= (car c) 5n)
+               (and (eq-sub-by d a-idx (arg1 b) (arg1 c))
+                    (eq-sub-by d a-idx (arg2 b) (arg2 c)))))
+      (if (= tag-b 8n)                      ;; b is sum
+        (let ((c (T c-idx)))
+          (and (= (car c) 8n)
+               (and (eq-sub-by d a-idx (arg1 b) (arg1 c))
+                    (eq-sub-by d a-idx (arg2 b) (arg2 c)))))
+      (if (= tag-b 12n)                     ;; b is eq
+        (let ((c (T c-idx)))
+          (and (= (car c) 12n)
+               (and (eq-sub-by d a-idx (arg1 b) (arg1 c))
+                    (and (eq-sub-by d a-idx (arg2 b) (arg2 c))
+                         (eq-sub-by d a-idx (arg3 b) (arg3 c))))))
+      ;; default: leaves.  sub is no-op.
+      (= b-idx c-idx)
+      )))))))))))
+
+;; ---------- cumeq on already-evaluated, indexed types ----------
+;; Both arguments are indices into the term table whose entries are in
+;; normal form (this invariant is maintained by check using E[]).
+;; If both reduce to `typ`, allow universe cumulativity; otherwise just
+;; compare indices.
+!(def cumeq (lambda (a-idx b-idx)
+  (let ((ae (E a-idx))
+        (be (E b-idx)))
+    (let ((a (T ae)))
+      (if (= (car a) 3n)
+        (let ((b (T be)))
+          (if (= (car b) 3n)
+            (<= (arg1 a) (arg1 b))
+            nil))
+        (= ae be))))))

@@ -1764,7 +1764,7 @@ def renderLurkTests : String := Id.run do
     out := out ++ s!"!(assert (check_pair (car {safeName}) (cdr {safeName})))\n\n"
   return out
 
-def main (args : List String) : IO Unit := do
+def depMain (args : List String) : IO Unit := do
   if args == ["--gen-lurk"] then
     let path := "slop/dependent_tests.lurk"
     IO.FS.writeFile path renderLurkTests

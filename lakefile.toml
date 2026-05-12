@@ -7,4 +7,20 @@ root = "Main"
 
 [[lean_exe]]
 name = "dependent"
-root = "Dependent"
+root = "DependentMain"
+
+[[lean_lib]]
+name = "Cert"
+roots = ["Cert", "CertCheck", "CertProofs", "CertTranslate", "Dependent", "Main"]
+
+[[lean_exe]]
+name = "cert"
+root = "CertMain"
+
+[[lean_exe]]
+name = "cert-translate"
+root = "CertTranslateMain"
+
+[[lean_exe]]
+name = "ping"
+root = "PingTest"
