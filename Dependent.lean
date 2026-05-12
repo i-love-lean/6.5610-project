@@ -1,5 +1,5 @@
 import Lean.Elab
-import Std.Data
+import Std.Data.HashMap
 
 /-
 # μLean
@@ -1707,7 +1707,7 @@ def fermat :=
     a◆ℕ ⇨ b◆ℕ ⇨ c◆ℕ ⇨ n◆ℕ ⇨ (’a =ₙ 0 ⇨ ⊥) ⇨ (’b =ₙ 0 ⇨ ⊥) ⇨ (’c =ₙ 0 ⇨ ⊥) ⇨ (’n =ₙ 0 ⇨ ⊥) ⇨ (’n =ₙ 1 ⇨ ⊥) ⇨ (’n =ₙ two ⇨ ⊥) ⇨ ’a ^ ’n + ’b ^ ’n =ₙ ’c ^ ’n ⇨ ⊥)
 
 /-- Can generate a full list with `tail +500 Dependent.lean | rg "^def ([^ ]*) :=\$" -or '  ("$1", $1),'` -/
-def defs := Std.HashMap.ofList [
+def ldefs := [
   ("a_imp_a", a_imp_a),
   ("a_imp_b_imp_ab", a_imp_b_imp_ab),
   ("a_imp_b_imp_ba", a_imp_b_imp_ba),
@@ -1770,7 +1770,7 @@ def defs := Std.HashMap.ofList [
   ("sqrt_two_irrational", sqrt_two_irrational),
   ("pow'", pow'),
   ("two_pow_four_eq_sixteen", two_pow_four_eq_sixteen),
-] |>.map fun _ (a, b) ↦ (dbify [] a, dbify [] b)
+].map fun p ↦ (p.1, (dbify [] p.2.1, dbify [] p.2.2))
 
 def leftpad s n :=
   "".pushn ' ' (n - s.length) ++ s
@@ -1780,7 +1780,10 @@ def print_line (a b c d : String) :=
 
 def main : IO Unit := do
   print_line "  " "Test" "Time (μs)" "Nodes"
-  defs.forM fun name tpair ↦ do
+  let mut defs := .ofList []
+  for p in ldefs do
     let start ← IO.monoNanosNow
-    let res := if checkuser defs tpair.1 tpair.2 then "✅" else "❌"
-    print_line res name s!"{((← IO.monoNanosNow) - start) / 1000}" s!"{tpair.1.sizeOf}"
+    let res := if checkuser defs p.2.1 p.2.2 then "✅" else "❌"
+    print_line res p.1 s!"{((← IO.monoNanosNow) - start) / 1000}" s!"{p.2.1.sizeOf}"
+    -- Don't allow earlier defs to depend on later ones for soundness
+    defs := defs.insert p.1 p.2
