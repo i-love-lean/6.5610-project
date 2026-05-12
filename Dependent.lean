@@ -736,8 +736,8 @@ def cong_add_r :=
     ]),
     n∶ℕ ⇨ m∶ℕ ⇨ k∶ℕ ⇨ h∶(’n =ₙ ’m) ⇨ ’n + ’k =ₙ ’m + ’k)
 
-/-- n = 0 + n -/
-def zero_add :=
+/-- n + 0 = 0 + n -/
+def add_zero_eq_zero_add :=
   (la [’n]
     (ab nat_rec [
       la [’n] (’n =ₙ 0 + ’n), ab refl [ℕ, 0],
@@ -749,12 +749,6 @@ def zero_add :=
         ]),
       ’n
     ]),
-    n∶ℕ ⇨ ’n =ₙ 0 + ’n)
-
-/-- n + 0 = 0 + n -/
-def add_zero_eq_zero_add :=
-  (la [’n]
-    (□ zero_add [’n]),
     n∶ℕ ⇨ ’n + 0 =ₙ 0 + ’n)
 
 /-- succ (m + n) = (succ m) + n -/
@@ -988,7 +982,7 @@ def succ_ne_zero :=
     n∶ℕ ⇨ h∶(suc ’n =ₙ 0) ⇨ ⊥)
 
 /-- Successor is injective -/
-def suc_inj :=
+def succ_inj :=
   (la [’n, ’m, ’h]
     (□ rw [
       ℕ, suc ’n, suc ’m,
@@ -997,11 +991,11 @@ def suc_inj :=
     ]),
     n∶ℕ ⇨ m∶ℕ ⇨ h∶(suc ’n =ₙ suc ’m) ⇨ ’n =ₙ ’m)
 
-/-- even n := ∃ k, n = k + k -/
+/-- ∃ k, n = k + k -/
 def even n :=
   prod ℕ (la [’k'] (n =ₙ ’k' + ’k'))
 
-/-- odd n := ∃ k, n = suc (k + k) -/
+/-- ∃ k, n = suc (k + k) -/
 def odd n :=
   prod ℕ (la [’k'] (n =ₙ suc (’k' + ’k')))
 
@@ -1099,7 +1093,7 @@ def even_ne_odd_base :=
                   (suc ’j2 + ’j2,
                     □ succ_add [’j2, ’j2]),
                   (’k + ’k,
-                    □ suc_inj [suc ’j2 + ’j2, ’k + ’k, ’hh]),
+                    □ succ_inj [suc ’j2 + ’j2, ’k + ’k, ’hh]),
                 ]
               ]
             ]),
@@ -1111,7 +1105,7 @@ def even_ne_odd_base :=
               (suc ’k + ’k,
                 □ succ_add [’k, ’k]),
               (’j + ’j,
-                □ suc_inj [suc ’k + ’k, ’j + ’j, ’h]),
+                □ succ_inj [suc ’k + ’k, ’j + ’j, ’h]),
             ]
           ]
         ]),
@@ -1140,8 +1134,8 @@ def even_ne_odd :=
     ]),
     n∶ℕ ⇨ even ’n ⇨ odd ’n ⇨ ⊥)
 
-/-- (a + a) * (b + b) = (a + b) + (a + b) -/
-def double_sum :=
+/-- (a + a) + (b + b) = (a + b) + (a + b) -/
+def double_add :=
   (la [’a, ’b]
     (□ eq_symm [
       ℕ,
@@ -1203,13 +1197,13 @@ def double_inj :=
               ’n, ’p,
               ap ’ih (m∶ℕ ⇨ ’n + ’n =ₙ ’m + ’m ⇨ ’n =ₙ ’m) [
                 ’p,
-                □ suc_inj [
+                □ succ_inj [
                   ’n + ’n, ’p + ’p,
                   clc ℕ (suc (’n + ’n)) [
                     (suc ’n + ’n,
                       □ succ_add [’n, ’n]),
                     (suc ’p + ’p,
-                      □ suc_inj [suc ’n + ’n, suc ’p + ’p, ’h]),
+                      □ succ_inj [suc ’n + ’n, suc ’p + ’p, ’h]),
                     (suc (’p + ’p),
                       ⇐ □ succ_add [’p, ’p]),
                   ]
@@ -1264,7 +1258,7 @@ def mul_even_even :=
                   ((’m + ’m) + (’j + ’j),
                     □ add_assoc [’m, ’m, ’j + ’j]),
                   ((’m + ’j) + (’m + ’j),
-                    □ double_sum [’m, ’j]),
+                    □ double_add [’m, ’j]),
                 ]
               ]
             ]),
@@ -1313,7 +1307,7 @@ def odd_sq_odd :=
                     □ cong_suc [
                       (’k + ’k) + (’j + ’j),
                       (’k + ’j) + (’k + ’j),
-                      □ double_sum [’k, ’j]
+                      □ double_add [’k, ’j]
                     ]),
                 ]
               ]),
@@ -1352,7 +1346,7 @@ def add_eq_zero_l :=
     ]),
     j∶ℕ ⇨ d∶ℕ ⇨ ’j + ’d =ₙ 0 ⇨ ’j =ₙ 0)
 
-/-- (a * a) + b = (a * b) + (a * b) -/
+/-- (a + a) * b = (a * b) + (a * b) -/
 def double_mul :=
   (la [’a, ’b]
     (ab nat_rec [
@@ -1399,7 +1393,7 @@ def double_mul :=
           ((’b + ’b) + (’a * ’b + ’a * ’b),
             □ add_assoc [’b, ’b, ’a * ’b + ’a * ’b]),
           ((’b + ’a * ’b) + (’b + ’a * ’b),
-            □ double_sum [’b, ’a * ’b]),
+            □ double_add [’b, ’a * ’b]),
           (suc ’a * ’b + (’b + ’a * ’b),
             □ cong_add_r [
               ’b + ’a * ’b, suc ’a * ’b, ’b + ’a * ’b,
@@ -1506,7 +1500,7 @@ def strong_sqrt_two :=
                             (ap ’ih
                               (j∶ℕ ⇨ d∶ℕ ⇨ n∶ℕ ⇨ ’j + ’d =ₙ ’t ⇨ (’j =ₙ 0 ⇨ ⊥) ⇨ 2 * (’n * ’n) =ₙ ’j * ’j ⇨ ⊥) [
                               suc ’w2, ’w2, ’i,
-                              □ suc_inj [
+                              □ succ_inj [
                                 suc ’w2 + ’w2, ’t,
                                 clc ℕ (suc ’w2 + suc ’w2) [
                                   (’j, ⇐ ’hlw),
@@ -1563,7 +1557,7 @@ def strong_sqrt_two :=
             la [’d2, ’recD, ’hjd2]
               (ap ’ih (j∶ℕ ⇨ d∶ℕ ⇨ n∶ℕ ⇨ ’j + ’d =ₙ ’t ⇨ (’j =ₙ 0 ⇨ ⊥) ⇨ 2 * (’n * ’n) =ₙ ’j * ’j ⇨ ⊥) [
                 ’j, ’d2, ’n,
-                □ suc_inj [’j + ’d2, ’t, ’hjd2],
+                □ succ_inj [’j + ’d2, ’t, ’hjd2],
                 ’hj, ’h
               ]),
             ’d
@@ -1626,7 +1620,6 @@ def ldefs := [
   ("cong_suc", cong_suc),
   ("cong_add_l", cong_add_l),
   ("cong_add_r", cong_add_r),
-  ("zero_add", zero_add),
   ("add_zero_eq_zero_add", add_zero_eq_zero_add),
   ("succ_add", succ_add),
   ("add_comm", add_comm),
@@ -1646,7 +1639,7 @@ def ldefs := [
   ("fib", fib),
   ("fib_seven_eq_thirteen", fib_seven_eq_thirteen),
   ("succ_ne_zero", succ_ne_zero),
-  ("suc_inj", suc_inj),
+  ("succ_inj", succ_inj),
   ("even_zero", even_zero),
   ("even_imp_succ_odd", even_imp_succ_odd),
   ("odd_imp_succ_even", odd_imp_succ_even),
@@ -1654,7 +1647,7 @@ def ldefs := [
   ("mul_two_eq_add", mul_two_eq_add),
   ("even_ne_odd_base", even_ne_odd_base),
   ("even_ne_odd", even_ne_odd),
-  ("double_sum", double_sum),
+  ("double_add", double_add),
   ("double_inj", double_inj),
   ("mul_even_even", mul_even_even),
   ("odd_sq_odd", odd_sq_odd),
@@ -1672,15 +1665,15 @@ def ldefs := [
 def leftpad s n :=
   "".pushn ' ' (n - s.length) ++ s
 
-def print_line (a b c d : String) :=
-  IO.println s!"{a}{leftpad b 30}{leftpad c 10}{leftpad d 10}"
+def format (a b c d : String) :=
+  s!"{a}{leftpad b 27}{leftpad c 10}{leftpad d 10}"
 
 def main : IO Unit := do
-  print_line "  " "Test" "Time (μs)" "Nodes"
+  IO.println "   Test                       Time (μs) Nodes"
   let mut defs := .ofList []
   for p in ldefs do
     let start ← IO.monoNanosNow
     let res := if checkuser defs p.2.1 p.2.2 then "✅" else "❌"
-    print_line res p.1 s!"{((← IO.monoNanosNow) - start) / 1000}" s!"{p.2.1.sizeOf}"
+    IO.println <| format res p.1 s!"{((← IO.monoNanosNow) - start) / 1000}" s!"{p.2.1.sizeOf}"
     -- Don't allow earlier defs to depend on later ones for soundness
     defs := defs.insert p.1 p.2
