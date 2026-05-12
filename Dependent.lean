@@ -662,7 +662,15 @@ def clc (α a : Term) : List (Term × Term) → Term
 ### Natural numbers and arithmetic
 -/
 
-instance : Zero Term := ⟨zero⟩
+/-- Convenience wrapper around `succ` -/
+def suc n := ap succ (ℕ ⇨ ℕ) [n]
+
+/-- Convert Lean `Nat` to μLean `ℕ` -/
+def of_nat : Nat → Term
+  | 0 => zero
+  | n + 1 => suc (of_nat n)
+
+instance : OfNat Term n := ⟨of_nat n⟩
 
 /-- ∃ n : ℕ, n = 0 -/
 def exists_n_eq_zero :=
@@ -670,20 +678,6 @@ def exists_n_eq_zero :=
     ℕ, la [’n] (’n =ₙ 0), 0, ab refl [ℕ, 0]
   ],
     prod ℕ (la [’n] (’n =ₙ 0)))
-
-/-- Convenience wrapper around `succ` -/
-def suc n := ap succ (ℕ ⇨ ℕ) [n]
-
-/-- 1 exists (yeah I know this is not super exciting) -/
-def one := suc 0
-
-instance : One Term := ⟨one⟩
-
-/-- 2 exists -/
-def two := suc 1
-
-/-- 4 exists -/
-def four := suc (suc two)
 
 /-- Addition -/
 def add' :=
@@ -697,7 +691,7 @@ def add n m := ar add' [n, m]
 
 instance : Add Term := ⟨add⟩
 
-/-- 0 + 0 = 0 -/
+/-- 0 + 0 = 0 (yeah I know this is not super exciting) -/
 def zero_plus_zero_eq_zero :=
   (ab refl [ℕ, 0],
     0 + 0 =ₙ 0)
@@ -709,8 +703,8 @@ def zero_plus_one_eq_one :=
 
 /-- 2 + 2 = 4 -/
 def two_plus_two_eq_four :=
-  (ab refl [ℕ, four],
-    two + two =ₙ four)
+  (ab refl [ℕ, 4],
+    2 + 2 =ₙ 4)
 
 /-- n = m → suc n = suc m -/
 def cong_suc :=
@@ -835,13 +829,13 @@ instance : Sub Term := ⟨subt⟩
 
 /-- 4 - 2 = 2 -/
 def four_minus_two_eq_two :=
-  (ab refl [ℕ, two],
-    four - two =ₙ two)
+  (ab refl [ℕ, 2],
+    4 - 2 =ₙ 2)
 
 /-- 2 - 4 = 0 -/
 def two_minus_four_eq_zero :=
   (ab refl [ℕ, 0],
-    two - four =ₙ 0)
+    2 - 4 =ₙ 0)
 
 /-- Multiplication -/
 def mul' :=
@@ -855,13 +849,10 @@ def mul n m := ar mul' [n, m]
 
 instance : Mul Term := ⟨mul⟩
 
-/-- 16 exists -/
-def sixteen := suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc (suc four)))))))))))
-
 /-- 4 * 4 = 16 -/
 def four_times_four_eq_sixteen :=
-  (ab refl [ℕ, sixteen],
-    four * four =ₙ sixteen)
+  (ab refl [ℕ, 16],
+    4 * 4 =ₙ 16)
 
 /-- 0 * n = 0 -/
 def zero_mul :=
@@ -944,10 +935,10 @@ def fac :=
     ]),
     n∶ℕ ⇨ ℕ)
 
-/-- 4 + 2 = 3! -/
-def four_plus_two_eq_three_fac :=
-  (ab refl [ℕ, four + two],
-    ar fac [suc two] =ₙ four + two)
+/-- 24 = 4! -/
+def twenty_four_eq_four_fac :=
+  (ab refl [ℕ, 24],
+    24 =ₙ ar fac [4])
 
 def nat_pair := prod ℕ (const ℕ)
 
@@ -977,10 +968,10 @@ def fib :=
     ]),
     n∶ℕ ⇨ ℕ)
 
-/-- fib 5 = 5 -/
-def fib_five_eq_five :=
-  (ab refl [ℕ, suc four],
-    ar fib [suc four] =ₙ suc four)
+/-- fib 7 = 13 -/
+def fib_seven_eq_thirteen :=
+  (ab refl [ℕ, 13],
+    ar fib [7] =ₙ 13)
 
 /-
 ### Irrationality of √2
@@ -1078,8 +1069,8 @@ def even_or_odd :=
 /-- two * n = n + n -/
 def mul_two_eq_add :=
   (la [’n]
-    (□ mul_comm [two, ’n]),
-    n∶ℕ ⇨ two * ’n =ₙ ’n + ’n)
+    (□ mul_comm [2, ’n]),
+    n∶ℕ ⇨ 2 * ’n =ₙ ’n + ’n)
 
 /-- k + k ≠ succ (j + j) -/
 def even_ne_odd_base :=
@@ -1438,7 +1429,7 @@ def sq_half :=
         □ double_inj [
           ’n * ’n, ’l * (’l + ’l),
           clc ℕ (’n * ’n + ’n * ’n) [
-            (two * (’n * ’n),
+            (2 * (’n * ’n),
               ⇐ □ mul_two_eq_add [’n * ’n]),
             ((’l + ’l) * (’l + ’l),
               ’h),
@@ -1451,12 +1442,12 @@ def sq_half :=
       (’l * ’l + ’l * ’l,
         □ double_mul [’l, ’l]),
     ]),
-    n∶ℕ ⇨ l∶ℕ ⇨ two * (’n * ’n) =ₙ (’l + ’l) * (’l + ’l) ⇨ ’n * ’n =ₙ ’l * ’l + ’l * ’l)
+    n∶ℕ ⇨ l∶ℕ ⇨ 2 * (’n * ’n) =ₙ (’l + ’l) * (’l + ’l) ⇨ ’n * ’n =ₙ ’l * ’l + ’l * ’l)
 
 /-- From n² = 2l² and n = 2i, derive 2i² = l² -/
 def half_sq :=
   (la [’i, ’l, ’n, ’hnn, ’hn]
-    (clc ℕ (two * (’i * ’i)) [
+    (clc ℕ (2 * (’i * ’i)) [
       (’i * ’i + ’i * ’i,
         □ mul_two_eq_add [’i * ’i]),
       ((’i + ’i) * ’i,
@@ -1478,13 +1469,13 @@ def half_sq :=
           ]
         ]),
     ]),
-    i∶ℕ ⇨ l∶ℕ ⇨ n∶ℕ ⇨ ’n * ’n =ₙ ’l * ’l + ’l * ’l ⇨ ’n =ₙ ’i + ’i ⇨ two * (’i * ’i) =ₙ ’l * ’l)
+    i∶ℕ ⇨ l∶ℕ ⇨ n∶ℕ ⇨ ’n * ’n =ₙ ’l * ’l + ’l * ’l ⇨ ’n =ₙ ’i + ’i ⇨ 2 * (’i * ’i) =ₙ ’l * ’l)
 
 /-- Strong induction lemma for √2 irrationality -/
 def strong_sqrt_two :=
   (la [’t]
     (ab nat_rec [
-      la [’t] (j∶ℕ ⇨ d∶ℕ ⇨ n∶ℕ ⇨ ’j + ’d =ₙ ’t ⇨ (’j =ₙ 0 ⇨ ⊥) ⇨ two * (’n * ’n) =ₙ ’j * ’j ⇨ ⊥),
+      la [’t] (j∶ℕ ⇨ d∶ℕ ⇨ n∶ℕ ⇨ ’j + ’d =ₙ ’t ⇨ (’j =ₙ 0 ⇨ ⊥) ⇨ 2 * (’n * ’n) =ₙ ’j * ’j ⇨ ⊥),
       la [’j, ’d, ’n, ’hjd, ’hj, ’h]
         (ap ’hj (’j =ₙ 0 ⇨ ⊥) [
           □ add_eq_zero_l [’j, ’d, ’hjd]
@@ -1513,7 +1504,7 @@ def strong_sqrt_two :=
                           ℕ, la [’k'] (’n =ₙ ’k' + ’k'), const ⊥,
                           la [’i, ’hi]
                             (ap ’ih
-                              (j∶ℕ ⇨ d∶ℕ ⇨ n∶ℕ ⇨ ’j + ’d =ₙ ’t ⇨ (’j =ₙ 0 ⇨ ⊥) ⇨ two * (’n * ’n) =ₙ ’j * ’j ⇨ ⊥) [
+                              (j∶ℕ ⇨ d∶ℕ ⇨ n∶ℕ ⇨ ’j + ’d =ₙ ’t ⇨ (’j =ₙ 0 ⇨ ⊥) ⇨ 2 * (’n * ’n) =ₙ ’j * ’j ⇨ ⊥) [
                               suc ’w2, ’w2, ’i,
                               □ suc_inj [
                                 suc ’w2 + ’w2, ’t,
@@ -1529,7 +1520,7 @@ def strong_sqrt_two :=
                                   ’n, suc ’w2,
                                   □ rw [
                                     ℕ, ’j, suc ’w2 + suc ’w2,
-                                    la [’x] (two * (’n * ’n) =ₙ ’x * ’x),
+                                    la [’x] (2 * (’n * ’n) =ₙ ’x * ’x),
                                     ’hlw, ’h
                                   ]
                                 ],
@@ -1545,7 +1536,7 @@ def strong_sqrt_two :=
                                 ’n, suc ’w2,
                                 □ rw [
                                   ℕ, ’j, suc ’w2 + suc ’w2,
-                                  la [’x] (two * (’n * ’n) =ₙ ’x * ’x),
+                                  la [’x] (2 * (’n * ’n) =ₙ ’x * ’x),
                                   ’hlw, ’h
                                 ]
                               ]
@@ -1561,7 +1552,7 @@ def strong_sqrt_two :=
                     ℕ, la [’k'] (’j * ’j =ₙ ’k' + ’k'),
                     ’n * ’n,
                     clc ℕ (’j * ’j) [
-                      (two * (’n * ’n),
+                      (2 * (’n * ’n),
                         ⇐ ’h),
                       (’n * ’n + ’n * ’n,
                         □ mul_two_eq_add [’n * ’n]),
@@ -1570,7 +1561,7 @@ def strong_sqrt_two :=
                 ]
               ]),
             la [’d2, ’recD, ’hjd2]
-              (ap ’ih (j∶ℕ ⇨ d∶ℕ ⇨ n∶ℕ ⇨ ’j + ’d =ₙ ’t ⇨ (’j =ₙ 0 ⇨ ⊥) ⇨ two * (’n * ’n) =ₙ ’j * ’j ⇨ ⊥) [
+              (ap ’ih (j∶ℕ ⇨ d∶ℕ ⇨ n∶ℕ ⇨ ’j + ’d =ₙ ’t ⇨ (’j =ₙ 0 ⇨ ⊥) ⇨ 2 * (’n * ’n) =ₙ ’j * ’j ⇨ ⊥) [
                 ’j, ’d2, ’n,
                 □ suc_inj [’j + ’d2, ’t, ’hjd2],
                 ’hj, ’h
@@ -1580,7 +1571,7 @@ def strong_sqrt_two :=
           (’j + ’d =ₙ suc ’t ⇨ ⊥) [’hjd]),
       ’t
     ]),
-    t∶ℕ ⇨ j∶ℕ ⇨ d∶ℕ ⇨ n∶ℕ ⇨ ’j + ’d =ₙ ’t ⇨ (’j =ₙ 0 ⇨ ⊥) ⇨ two * (’n * ’n) =ₙ ’j * ’j ⇨ ⊥)
+    t∶ℕ ⇨ j∶ℕ ⇨ d∶ℕ ⇨ n∶ℕ ⇨ ’j + ’d =ₙ ’t ⇨ (’j =ₙ 0 ⇨ ⊥) ⇨ 2 * (’n * ’n) =ₙ ’j * ’j ⇨ ⊥)
 
 /-- √2 is irrational -/
 def sqrt_two_irrational :=
@@ -1588,7 +1579,7 @@ def sqrt_two_irrational :=
     (□ strong_sqrt_two [
       ’m, ’m, 0, ’n, ab refl [ℕ, ’m], ’hm, ’h
     ]),
-    n∶ℕ ⇨ m∶ℕ ⇨ hm∶(’m =ₙ 0 ⇨ ⊥) ⇨ h∶(two * (’n * ’n) =ₙ ’m * ’m) ⇨ ⊥)
+    n∶ℕ ⇨ m∶ℕ ⇨ hm∶(’m =ₙ 0 ⇨ ⊥) ⇨ h∶(2 * (’n * ’n) =ₙ ’m * ’m) ⇨ ⊥)
 
 /-- Exponentiation -/
 def pow' :=
@@ -1604,13 +1595,13 @@ instance : Pow Term Term := ⟨pow⟩
 
 /-- 2 ^ 4 = 16 -/
 def two_pow_four_eq_sixteen :=
-  (ab refl [ℕ, sixteen],
-    two ^ four =ₙ sixteen)
+  (ab refl [ℕ, 16],
+    2 ^ (4 : Term) =ₙ 16)
 
 /-- Fermat's last theorem -/
 def fermat :=
   (name "sorry",
-    a∶ℕ ⇨ b∶ℕ ⇨ c∶ℕ ⇨ n∶ℕ ⇨ (’a =ₙ 0 ⇨ ⊥) ⇨ (’b =ₙ 0 ⇨ ⊥) ⇨ (’c =ₙ 0 ⇨ ⊥) ⇨ (’n =ₙ 0 ⇨ ⊥) ⇨ (’n =ₙ 1 ⇨ ⊥) ⇨ (’n =ₙ two ⇨ ⊥) ⇨ ’a ^ ’n + ’b ^ ’n =ₙ ’c ^ ’n ⇨ ⊥)
+    a∶ℕ ⇨ b∶ℕ ⇨ c∶ℕ ⇨ n∶ℕ ⇨ (’a =ₙ 0 ⇨ ⊥) ⇨ (’b =ₙ 0 ⇨ ⊥) ⇨ (’c =ₙ 0 ⇨ ⊥) ⇨ (’n =ₙ 0 ⇨ ⊥) ⇨ (’n =ₙ 1 ⇨ ⊥) ⇨ (’n =ₙ 2 ⇨ ⊥) ⇨ ’a ^ ’n + ’b ^ ’n =ₙ ’c ^ ’n ⇨ ⊥)
 
 /-- Can generate a full list with `tail +500 Dependent.lean | rg "^def ([^ ]*) :=\$" -or '  ("$1", $1),'` -/
 def ldefs := [
@@ -1650,10 +1641,10 @@ def ldefs := [
   ("succ_mul", succ_mul),
   ("mul_comm", mul_comm),
   ("fac", fac),
-  ("four_plus_two_eq_three_fac", four_plus_two_eq_three_fac),
+  ("twenty_four_eq_four_fac", twenty_four_eq_four_fac),
   ("nat_snd", nat_snd),
   ("fib", fib),
-  ("fib_five_eq_five", fib_five_eq_five),
+  ("fib_seven_eq_thirteen", fib_seven_eq_thirteen),
   ("succ_ne_zero", succ_ne_zero),
   ("suc_inj", suc_inj),
   ("even_zero", even_zero),
