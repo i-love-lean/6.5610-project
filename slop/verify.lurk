@@ -1,3 +1,4 @@
-!(defq add_zero_eq_zero_add_protocol_loaded !(load-expr "protocol"))
-!(inspect "e7d84fee83bba7cdeec749bea229c826c7e557adfd628a914cc1b36aa55df")
-!(verify-protocol add_zero_eq_zero_add_protocol_loaded "proof")
+!(defq protocol_loaded !(load-expr "protocol"))
+!(inspect "64d97e084a60018f49716687df2558ec0a1c2325245b20d5a174914f2ca88c"
+)
+!(verify-protocol protocol_loaded "proof")

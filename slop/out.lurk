@@ -1,13 +1,4 @@
-!(defprotocol protocol (comm_term)
-    (cons
-        ;; claim definition
-        (cons (cons 
-                ;; expression
-                ;; needs to be a quoted syntax tree
-                (list 'check nil (list 'open comm_term) 'statement)
-                ;; environment 
-                (letrec (
-                    (arg1 (lambda (x) (car (cdr x))))
+(arg1 (lambda (x) (car (cdr x))))
 (arg2 (lambda (x) (car (cdr (cdr x)))))
 (arg3 (lambda (x) (car (cdr (cdr (cdr x))))))
 (and (lambda (x y) (if x (if y t nil) nil)))
@@ -28,14 +19,3 @@
 (cumeq (lambda (a a-prime) (if (and (= (car a) 3n) (= (car a-prime) 3n)) (<= (arg1 a) (arg1 a-prime)) (eq a (evaluate a-prime)))))
 (check (lambda (env term tau) (let ((t-op   (car term)) (tau-op (car tau)) (default-branch (lambda () (let ((tau-prime (evaluate tau))) (if (eq tau-prime tau) (cumeq (get-dbtype term) tau) (check env term tau-prime)))))) (if (= t-op 0n) (let ((x (arg1 term))) (if (< x (len env)) (cumeq (evaluate (incr (+ x 1) (geti env x))) tau) nil)) (if (= t-op 1n) (if (= tau-op 4n) (let ((b     (arg1 term)) (alpha (arg1 tau)) (beta  (arg2 tau))) (check (cons alpha env) b beta)) (default-branch)) (if (= t-op 2n) (let ((phi (arg2 term))) (if (= (car phi) 4n) (let ((f     (arg1 term)) (a     (arg3 term)) (alpha (arg1 phi)) (beta  (arg2 phi))) (if (check env f phi) (if (check env a alpha) (cumeq (evaluate (sub a beta)) tau) nil) nil)) (default-branch))) (if (= t-op 4n) (if (= tau-op 3n) (let ((alpha (arg1 term)) (beta  (arg2 term))) (if (check env alpha tau) (check (cons alpha env) beta tau) nil)) (default-branch)) (if (= t-op 5n) (if (= tau-op 3n) (let ((alpha (arg1 term)) (beta  (arg2 term))) (if (check env alpha tau) (check env beta (list 4n alpha '(3n 0))) nil)) (default-branch)) (if (= t-op 8n) (if (= tau-op 3n) (let ((alpha (arg1 term)) (beta  (arg2 term))) (if (check env alpha tau) (check env beta tau) nil)) (default-branch)) (if (= t-op 12n) (if (= tau-op 3n) (let ((a       (arg1 term)) (a-prime (arg2 term)) (alpha   (arg3 term))) (if (check env a alpha) (if (check env a-prime alpha) (check env alpha tau) nil) nil)) (default-branch)) (let ((tau-prime (evaluate tau))) (if (eq tau-prime tau) (cumeq (get-dbtype term) tau) (check env term tau-prime))) ))))))))))
 (check_pair (lambda (term tau) (if (check nil tau '(3n 2)) (check nil term tau) nil)))
-                    
-                    (statement '(4n (15n) (4n (15n) (12n (2n (2n (1n (2n (2n (2n (18n) (4n (4n (15n) (3n 1)) (4n (2n (0n 0) (4n (15n) (3n 1)) (16n)) (4n (4n (15n) (4n (2n (0n 2) (4n (15n) (3n 1)) (0n 0)) (2n (0n 3) (4n (15n) (3n 1)) (2n (17n) (4n (15n) (15n)) (0n 1))))) (4n (15n) (2n (0n 3) (4n (15n) (3n 1)) (0n 0)))))) (1n (15n))) (4n (2n (1n (15n)) (4n (15n) (3n 1)) (16n)) (4n (4n (15n) (4n (2n (1n (15n)) (4n (15n) (3n 1)) (0n 0)) (2n (1n (15n)) (4n (15n) (3n 1)) (2n (17n) (4n (15n) (15n)) (0n 1))))) (4n (15n) (2n (1n (15n)) (4n (15n) (3n 1)) (0n 0))))) (0n 0)) (4n (4n (15n) (4n (2n (1n (15n)) (4n (15n) (3n 1)) (0n 0)) (2n (1n (15n)) (4n (15n) (3n 1)) (2n (17n) (4n (15n) (15n)) (0n 1))))) (4n (15n) (2n (1n (15n)) (4n (15n) (3n 1)) (0n 0)))) (1n (1n (2n (17n) (4n (15n) (15n)) (0n 0)))))) (4n (15n) (4n (15n) (15n))) (0n 1)) (4n (15n) (15n)) (0n 0)) (2n (2n (1n (2n (2n (2n (18n) (4n (4n (15n) (3n 1)) (4n (2n (0n 0) (4n (15n) (3n 1)) (16n)) (4n (4n (15n) (4n (2n (0n 2) (4n (15n) (3n 1)) (0n 0)) (2n (0n 3) (4n (15n) (3n 1)) (2n (17n) (4n (15n) (15n)) (0n 1))))) (4n (15n) (2n (0n 3) (4n (15n) (3n 1)) (0n 0)))))) (1n (15n))) (4n (2n (1n (15n)) (4n (15n) (3n 1)) (16n)) (4n (4n (15n) (4n (2n (1n (15n)) (4n (15n) (3n 1)) (0n 0)) (2n (1n (15n)) (4n (15n) (3n 1)) (2n (17n) (4n (15n) (15n)) (0n 1))))) (4n (15n) (2n (1n (15n)) (4n (15n) (3n 1)) (0n 0))))) (0n 0)) (4n (4n (15n) (4n (2n (1n (15n)) (4n (15n) (3n 1)) (0n 0)) (2n (1n (15n)) (4n (15n) (3n 1)) (2n (17n) (4n (15n) (15n)) (0n 1))))) (4n (15n) (2n (1n (15n)) (4n (15n) (3n 1)) (0n 0)))) (1n (1n (2n (17n) (4n (15n) (15n)) (0n 0)))))) (4n (15n) (4n (15n) (15n))) (0n 0)) (4n (15n) (15n)) (0n 1)) (15n)))))
-                ) (current-env))
-            )
-            ;; expected output
-            t )
-        ;; post-verification predicate
-        nil)
-:description "n + m = m + n")
-
-!(dump-expr protocol "protocol")
