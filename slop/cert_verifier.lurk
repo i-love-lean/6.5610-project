@@ -314,9 +314,9 @@
                 (w-fp (arg2 entry))      ;; E[f]
                 (w-phip (arg3 entry))    ;; E[phi]
                 (w-ap (arg4 entry))      ;; E[a]
-                (w-subResPhi (car (cdr (cdr (cdr (cdr (cdr entry)))))))         ;; arg5
-                (w-subResEvPhi (car (cdr (cdr (cdr (cdr (cdr (cdr entry))))))))  ;; arg6
-                (w-bodySubRes (car (cdr (cdr (cdr (cdr (cdr (cdr (cdr entry)))))))))  ;; arg7
+                (w-subResPhi (arg5 entry))         ;; arg5
+                (w-subResEvPhi (arg6 entry))  ;; arg6
+                (w-bodySubRes (arg7 entry))  ;; arg7
                 (phi-node (T phi-idx))
                 (fp-node (T (arg2 entry))))
             (and (= (E f-idx) w-fp)
@@ -339,8 +339,8 @@
                 (w0 (arg2 entry))   ;; = E[f]
                 (w1 (arg3 entry))   ;; = E[phi]
                 (w2 (arg4 entry))   ;; = E[a]
-                (subRes (car (cdr (cdr (cdr (cdr (cdr entry)))))))           ;; arg5
-                (subResEv (car (cdr (cdr (cdr (cdr (cdr (cdr entry))))))))   ;; arg6
+                (subRes (arg5 entry))           ;; arg5
+                (subResEv (arg6 entry))   ;; arg6
                 (phi-node (T phi-idx)))
             (and (= (E f-idx) w0)
             (and (= (E phi-idx) w1)
@@ -375,8 +375,11 @@
       (let ((x (arg1 t-node)))
         (if (< x (len env))
           ;; cumeq (incr (x+1) env[x]) tau
-          ;; env[x] is already eval'd; incr preserves normality.
-          (eq-incr-by (+ x 1) 0 tau-idx (geti env x))
+          ;; env[x] is already eval'd; we eval tau here too, because the
+          ;; app-case recursion `(check-cert env f-idx phi-idx)` passes a
+          ;; RAW phi-idx — its un-reduced apps inside would break the
+          ;; structural compare in eq-incr-by otherwise.
+          (eq-incr-by (+ x 1) 0 (E tau-idx) (geti env x))
           nil))
     (if (= tag 1n)                     ;; lam
       (if (= (car tau-node) 4n)        ;; vs fn
@@ -401,7 +404,7 @@
                   (or (= rule 8) (or (= rule 9)
                   (or (= rule 10) (or (= rule 11)
                   (or (= rule 12) (= rule 13))))))))
-              (let ((subResEv (car (cdr (cdr (cdr (cdr (cdr (cdr entry)))))))))
+              (let ((subResEv (arg6 entry)))
                 (if (check-cert env f-idx phi-idx)
                   (if (check-cert env a-idx (E alpha-idx))
                     (cumeq subResEv tau-idx)
@@ -459,9 +462,16 @@
       (if (= (car tau-node) 3n)
         (<= (+ (arg1 t-node) 1) (arg1 tau-node))
         nil)
+    (if (= tag 23n)                    ;; opaque ref
+      ;; Look up the opaque node's registered type and structurally compare.
+      ;; If it isn't in `theorem-alist`, refuse.
+      (let ((reg (lookup-theorem t-idx theorem-alist)))
+        (if (eq reg nil)
+          nil
+          (cumeq reg tau-idx)))
       ;; Built-in constant: look up its dbtype and structurally compare to tau.
       ;; If the constant isn't in `dbtype-alist`, we refuse.
       (let ((dbt (lookup-dbtype tag dbtype-alist)))
         (if (eq dbt nil)
           nil
-          (cumeq dbt tau-idx))))))))))))))) ;; (let + if + 12 outer closes)
+          (cumeq dbt tau-idx))))))))))))))))  ;; (cumeq + if-eq-nil + let + 10 ifs + outer let + lambda + defrec)

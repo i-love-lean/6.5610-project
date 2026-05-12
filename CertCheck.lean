@@ -126,6 +126,16 @@ partial def checkLean (env : List Nat) (t τ : Nat) : EvalM Bool := do
     if τNd.tag == .typ then
       return (nd.payload + 1) ≤ τNd.payload
     else return false
+  | .opq =>
+    -- An opaque leaf — black-box reference to a separately verified theorem.
+    -- Look it up in the builder's theoremAlist; if found, compare its
+    -- registered type to τ via cumeq.
+    let b ← liftM (m := BuilderM) get
+    match b.theoremAlist.find? (fun (op, _, _, _) => op == t) with
+    | some (_, ty, _, _) =>
+      let tyEv ← evalM ty
+      cumeqLean tyEv τ
+    | none => return false
   | _ =>
     -- Built-in constant.  Look up its tag in `dbtypeAlist` (threaded
     -- through via the EvalState pseudo-field — keep this simple by
@@ -133,10 +143,21 @@ partial def checkLean (env : List Nat) (t τ : Nat) : EvalM Bool := do
     return false  -- handled by the wrapper `checkLeanWithDbtypes` instead
 
 /-- Convenience wrapper: build a proof, run `checkLean`, return `(ok?, builder, evalState)`.
-The builder/state is returned so the caller can also dump if desired. -/
+The builder/state is returned so the caller can also dump if desired.
+
+If any opaque theorems are registered in the builder, each one's body is
+checked against its claimed type before the main proof is checked. -/
 def runCheck (build : BuilderM (Nat × Nat)) : (Bool × Builder × EvalState) :=
   let ((termIdx, typeIdx), b1) := build.run {}
   let prog : EvalM Bool := do
+    let bld ← liftM (m := BuilderM) get
+    let mut allOk := true
+    for (_, ty, proof, _) in bld.theoremAlist do
+      if allOk then
+        let τEv ← evalM ty
+        let r ← checkLean [] proof τEv
+        if !r then allOk := false
+    if !allOk then return false
     let τEv ← evalM typeIdx
     checkLean [] termIdx τEv
   let ((ok, evalState), b2) := (prog.run {}).run b1
@@ -238,6 +259,14 @@ partial def checkLeanD (dbtypes : List (Nat × Nat))
     if τNd.tag == .typ then
       return (nd.payload + 1) ≤ τNd.payload
     else return false
+  | .opq =>
+    -- Opaque reference: look up registered type in builder's theoremAlist.
+    let b ← liftM (m := BuilderM) get
+    match b.theoremAlist.find? (fun (op, _, _, _) => op == t) with
+    | some (_, ty, _, _) =>
+      let tyEv ← evalM ty
+      cumeqLean tyEv τ
+    | none => return false
   | _ =>
     -- Built-in constant: dbtype lookup.
     let tag := nd.tag.toNat
@@ -301,6 +330,16 @@ partial def checkLeanDebug (dbtypes : List (Nat × Nat))
       if ok then return (true, "")
       else return (false, s!"app #{t}: sub-eval #{subEv} ≠ τ #{τ}")
     else return (false, s!"app #{t}: φ #{φ} has tag {φNd.tag.toNat}, not fn")
+  | .opq =>
+    -- Opaque reference: look up registered type in builder's theoremAlist.
+    let b ← liftM (m := BuilderM) get
+    match b.theoremAlist.find? (fun (op, _, _, _) => op == t) with
+    | some (_, ty, _, name) =>
+      let tyEv ← evalM ty
+      let ok ← cumeqLean tyEv τ
+      if ok then return (true, "")
+      else return (false, s!"opaque #{t} ({name}): registered type #{tyEv} ≠ τ #{τ}")
+    | none => return (false, s!"opaque #{t}: not in theorem-alist")
   | _ =>
     -- Built-in constant: dbtype lookup.
     let tag := nd.tag.toNat
@@ -320,8 +359,20 @@ def runCheckDebug (build : BuilderM (Nat × Nat × List (Nat × Nat))) :
     (Bool × String × Builder) :=
   let ((termIdx, typeIdx, dbtypes), b1) := build.run {}
   let prog : EvalM (Bool × String) := do
-    let τEv ← evalM typeIdx
-    checkLeanDebug dbtypes [] termIdx τEv
+    -- Verify each registered theorem's body before the main term.
+    let bld ← liftM (m := BuilderM) get
+    let mut firstFail : Option (Bool × String) := none
+    for (_, ty, proof, name) in bld.theoremAlist do
+      if firstFail.isNone then
+        let τEv ← evalM ty
+        let res ← checkLeanDebug dbtypes [] proof τEv
+        if !res.1 then
+          firstFail := some (false, s!"opaque theorem '{name}' body fails: {res.2}")
+    match firstFail with
+    | some r => return r
+    | none =>
+      let τEv ← evalM typeIdx
+      checkLeanDebug dbtypes [] termIdx τEv
   let (((ok, why), _evalState), b2) := (prog.run {}).run b1
   (ok, why, b2)
 

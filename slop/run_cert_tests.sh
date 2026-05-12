@@ -15,6 +15,10 @@ total_t=0
 for f in cert_*.lurk; do
   base=$(basename "$f" .lurk)
   case "$base" in cert_verifier|cert_helpers) continue ;; esac
+  # Sqrt is too big to fit on this machine; skip by default unless caller
+  # explicitly opts in via a matching pattern.
+  if [ "$base" = "cert_dep_sqrt_two_irrational" ] && \
+     [ "$PATTERN" = "*" ]; then continue; fi
   case "$base" in $PATTERN|cert_$PATTERN) : ;; *) continue ;; esac
 
   t0=$(date +%s)

@@ -73,6 +73,18 @@
         (cdr entry)
         (lookup-dbtype tag (cdr alist)))))))
 
+;; ---------- theorem lookup ----------
+;; (lookup-theorem idx alist) — walks the opaque-theorem association list
+;; returning the index of the registered type for the opaque node `idx`, or
+;; nil if not registered.  alist entries: (cons opaque-idx type-idx).
+!(defrec lookup-theorem (lambda (idx alist)
+  (if (eq alist nil)
+    nil
+    (let ((entry (car alist)))
+      (if (= (car entry) idx)
+        (cdr entry)
+        (lookup-theorem idx (cdr alist)))))))
+
 ;; ---------- shape predicates ----------
 ;; (is-app-k-of k op idx)  — true iff T[idx] is `app(app(...(op _ _)... _ _) _ _)`
 ;; nested exactly k times (i.e. walking arg1 k times finds tag op).
@@ -99,89 +111,119 @@
 ;; currently at depth d (so a `var x` in T[b] becomes `var (x+k)` if d <= x,
 ;; otherwise `var x`).  Leaves fall back to index equality (relies on hash-
 ;; consing in the dump generator).
+;;
+;; NOTE: uses nested `if` instead of `and` for short-circuit.  Lurk's `and`
+;; is a regular function — both args evaluate eagerly — so a mismatched tag
+;; in the first leg would still recurse into the second and explode on
+;; `(car nil)` from `(arg N a)` when `a`'s shape doesn't fit.
 !(defrec eq-incr-by (lambda (k d a-idx b-idx)
   (let ((a (T a-idx))
         (b (T b-idx)))
-    (let ((tag-b (car b)))
+    (let ((tag-b (car b))
+          (tag-a (car a)))
       (if (= tag-b 0n)
-        (let ((x (arg1 b)))
-          (and (= (car a) 0n)
-               (= (arg1 a) (if (<= d x) (+ x k) x))))
+        (if (= tag-a 0n)
+          (let ((x (arg1 b)))
+            (= (arg1 a) (if (<= d x) (+ x k) x)))
+          nil)
       (if (= tag-b 1n)
-        (and (= (car a) 1n)
-             (eq-incr-by k (+ d 1) (arg1 a) (arg1 b)))
+        (if (= tag-a 1n)
+          (eq-incr-by k (+ d 1) (arg1 a) (arg1 b))
+          nil)
       (if (= tag-b 4n)
-        (and (= (car a) 4n)
-             (and (eq-incr-by k d (arg1 a) (arg1 b))
-                  (eq-incr-by k (+ d 1) (arg2 a) (arg2 b))))
+        (if (= tag-a 4n)
+          (if (eq-incr-by k d (arg1 a) (arg1 b))
+            (eq-incr-by k (+ d 1) (arg2 a) (arg2 b))
+            nil)
+          nil)
       (if (= tag-b 2n)
-        (and (= (car a) 2n)
-             (and (eq-incr-by k d (arg1 a) (arg1 b))
-                  (and (eq-incr-by k d (arg2 a) (arg2 b))
-                       (eq-incr-by k d (arg3 a) (arg3 b)))))
+        (if (= tag-a 2n)
+          (if (eq-incr-by k d (arg1 a) (arg1 b))
+            (if (eq-incr-by k d (arg2 a) (arg2 b))
+              (eq-incr-by k d (arg3 a) (arg3 b))
+              nil)
+            nil)
+          nil)
       (if (= tag-b 5n)                      ;; prod
-        (and (= (car a) 5n)
-             (and (eq-incr-by k d (arg1 a) (arg1 b))
-                  (eq-incr-by k d (arg2 a) (arg2 b))))
+        (if (= tag-a 5n)
+          (if (eq-incr-by k d (arg1 a) (arg1 b))
+            (eq-incr-by k d (arg2 a) (arg2 b))
+            nil)
+          nil)
       (if (= tag-b 8n)                      ;; sum
-        (and (= (car a) 8n)
-             (and (eq-incr-by k d (arg1 a) (arg1 b))
-                  (eq-incr-by k d (arg2 a) (arg2 b))))
+        (if (= tag-a 8n)
+          (if (eq-incr-by k d (arg1 a) (arg1 b))
+            (eq-incr-by k d (arg2 a) (arg2 b))
+            nil)
+          nil)
       (if (= tag-b 12n)                     ;; eq
-        (and (= (car a) 12n)
-             (and (eq-incr-by k d (arg1 a) (arg1 b))
-                  (and (eq-incr-by k d (arg2 a) (arg2 b))
-                       (eq-incr-by k d (arg3 a) (arg3 b)))))
-      ;; default: leaves (typ, fls, ...).  No vars to shift.
+        (if (= tag-a 12n)
+          (if (eq-incr-by k d (arg1 a) (arg1 b))
+            (if (eq-incr-by k d (arg2 a) (arg2 b))
+              (eq-incr-by k d (arg3 a) (arg3 b))
+              nil)
+            nil)
+          nil)
+      ;; default: leaves (typ, fls, opaque, built-ins, ...).  No vars to
+      ;; shift; index equality on the hash-consed dump.
       (= a-idx b-idx)
       )))))))))))
 
 ;; ---------- eq-sub-by ----------
+;; Nested-if version to short-circuit on tag mismatch (see eq-incr-by note).
 !(defrec eq-sub-by (lambda (d a-idx b-idx c-idx)
-  (let ((b (T b-idx)))
-    (let ((tag-b (car b)))
+  (let ((b (T b-idx))
+        (c (T c-idx)))
+    (let ((tag-b (car b))
+          (tag-c (car c)))
       (if (= tag-b 0n)                      ;; b is var x
         (let ((x (arg1 b)))
           (if (= x d)
             ;; replace with incr d a
             (eq-incr-by d 0 c-idx a-idx)
-            ;; else: var (if d < x then x-1 else x)
-            (let ((expected (if (< d x) (- x 1) x))
-                  (c (T c-idx)))
-              (and (= (car c) 0n)
-                   (= (arg1 c) expected)))))
+            ;; else: c must be var (if d < x then x-1 else x)
+            (if (= tag-c 0n)
+              (= (arg1 c) (if (< d x) (- x 1) x))
+              nil)))
       (if (= tag-b 1n)                      ;; b is lam
-        (let ((c (T c-idx)))
-          (and (= (car c) 1n)
-               (eq-sub-by (+ d 1) a-idx (arg1 b) (arg1 c))))
+        (if (= tag-c 1n)
+          (eq-sub-by (+ d 1) a-idx (arg1 b) (arg1 c))
+          nil)
       (if (= tag-b 4n)                      ;; b is fn
-        (let ((c (T c-idx)))
-          (and (= (car c) 4n)
-               (and (eq-sub-by d a-idx (arg1 b) (arg1 c))
-                    (eq-sub-by (+ d 1) a-idx (arg2 b) (arg2 c)))))
+        (if (= tag-c 4n)
+          (if (eq-sub-by d a-idx (arg1 b) (arg1 c))
+            (eq-sub-by (+ d 1) a-idx (arg2 b) (arg2 c))
+            nil)
+          nil)
       (if (= tag-b 2n)                      ;; b is app
-        (let ((c (T c-idx)))
-          (and (= (car c) 2n)
-               (and (eq-sub-by d a-idx (arg1 b) (arg1 c))
-                    (and (eq-sub-by d a-idx (arg2 b) (arg2 c))
-                         (eq-sub-by d a-idx (arg3 b) (arg3 c))))))
+        (if (= tag-c 2n)
+          (if (eq-sub-by d a-idx (arg1 b) (arg1 c))
+            (if (eq-sub-by d a-idx (arg2 b) (arg2 c))
+              (eq-sub-by d a-idx (arg3 b) (arg3 c))
+              nil)
+            nil)
+          nil)
       (if (= tag-b 5n)                      ;; b is prod
-        (let ((c (T c-idx)))
-          (and (= (car c) 5n)
-               (and (eq-sub-by d a-idx (arg1 b) (arg1 c))
-                    (eq-sub-by d a-idx (arg2 b) (arg2 c)))))
+        (if (= tag-c 5n)
+          (if (eq-sub-by d a-idx (arg1 b) (arg1 c))
+            (eq-sub-by d a-idx (arg2 b) (arg2 c))
+            nil)
+          nil)
       (if (= tag-b 8n)                      ;; b is sum
-        (let ((c (T c-idx)))
-          (and (= (car c) 8n)
-               (and (eq-sub-by d a-idx (arg1 b) (arg1 c))
-                    (eq-sub-by d a-idx (arg2 b) (arg2 c)))))
+        (if (= tag-c 8n)
+          (if (eq-sub-by d a-idx (arg1 b) (arg1 c))
+            (eq-sub-by d a-idx (arg2 b) (arg2 c))
+            nil)
+          nil)
       (if (= tag-b 12n)                     ;; b is eq
-        (let ((c (T c-idx)))
-          (and (= (car c) 12n)
-               (and (eq-sub-by d a-idx (arg1 b) (arg1 c))
-                    (and (eq-sub-by d a-idx (arg2 b) (arg2 c))
-                         (eq-sub-by d a-idx (arg3 b) (arg3 c))))))
-      ;; default: leaves.  sub is no-op.
+        (if (= tag-c 12n)
+          (if (eq-sub-by d a-idx (arg1 b) (arg1 c))
+            (if (eq-sub-by d a-idx (arg2 b) (arg2 c))
+              (eq-sub-by d a-idx (arg3 b) (arg3 c))
+              nil)
+            nil)
+          nil)
+      ;; default: leaves.  sub is no-op; index equality.
       (= b-idx c-idx)
       )))))))))))
 

@@ -24,13 +24,16 @@ private def proofs : List (String × String × BuilderM (Nat × Nat)) :=
     ("iota_nat_s_smoke",        "iota_nat_s_smoke", buildIotaNatSSmoke),
     ("iota_prod_smoke",         "iota_prod_smoke",  buildIotaProdSmoke),
     ("iota_sum_l_smoke",        "iota_sum_l_smoke", buildIotaSumLSmoke),
-    ("iota_sum_r_smoke",        "iota_sum_r_smoke", buildIotaSumRSmoke)
+    ("iota_sum_r_smoke",        "iota_sum_r_smoke", buildIotaSumRSmoke),
+    ("opaque_identity",         "opaque_identity",  buildOpaqueIdentity)
   ]
 
 /-- Bad proofs: `checkLean` should reject these. -/
 private def badProofs : List (String × BuilderM (Nat × Nat)) :=
-  [ ("bad_lam_fls",  buildBadLamFls),
-    ("bad_var_type", buildBadVarType)
+  [ ("bad_lam_fls",        buildBadLamFls),
+    ("bad_var_type",       buildBadVarType),
+    ("bad_opaque_body",    buildBadOpaqueBody),
+    ("unregistered_opaque", buildUnregisteredOpaque)
   ]
 
 def main (args : List String) : IO Unit := do

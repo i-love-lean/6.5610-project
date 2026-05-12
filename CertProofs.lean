@@ -290,6 +290,28 @@ def buildIotaEqSmoke : BuilderM (Nat × Nat) := do
   let _outer ← app f5 phiPlaceholder a2
   return (term, typ_)
 
+/-- Smoke test for opaque theorems.
+
+Registers `aImpA = λα. λa. a : ∀α : 𝒰, α → α` opaquely, then builds a wrapper
+proof that *uses* the opaque reference at type `∀α : 𝒰, α → α`.
+
+The wrapper's body is exactly the opaque leaf (no other scaffolding) — its
+type is the same as the registered theorem's type, so `check-cert` should
+accept it via the `cumeq registeredType tauIdx` rule. -/
+def buildOpaqueIdentity : BuilderM (Nat × Nat) := do
+  let u0  ← typ 0
+  let v0  ← var 0
+  let v1  ← var 1
+  let innerFn ← fn v0 v1
+  let typeIdx ← fn u0 innerFn
+  let innerLam ← lam v0
+  let bodyIdx ← lam innerLam
+  -- Register the theorem.  Body/type closures are pure index-returners.
+  let opaqueIdx ← opaqueTheorem "id" (return bodyIdx) (return typeIdx)
+  -- The wrapper's proof is the opaque leaf itself; its declared type matches
+  -- the registered type.
+  return (opaqueIdx, typeIdx)
+
 /-! ## Intentionally bad proofs (for negative testing of `checkLean`) -/
 
 /-- `lam (var 0)` claimed to have type `⊥`.  A lambda needs a function type;
@@ -311,5 +333,32 @@ def buildBadVarType : BuilderM (Nat × Nat) := do
   let lamBody ← lam v0
   let badType ← fn bot u0    -- ⊥ → 𝒰
   return (lamBody, badType)
+
+/-- Register `λα. λa. a` opaquely against the *wrong* type `⊥ → ⊥`.  The body
+doesn't have that type, so the registration's per-theorem check must reject. -/
+def buildBadOpaqueBody : BuilderM (Nat × Nat) := do
+  let u0  ← typ 0
+  let v0  ← var 0
+  let v1  ← var 1
+  let innerFn ← fn v0 v1
+  let realType ← fn u0 innerFn
+  let bot ← fls
+  let badType ← fn bot bot       -- claim ⊥ → ⊥ instead of the real ∀α, α → α
+  let innerLam ← lam v0
+  let bodyIdx ← lam innerLam
+  let opaqueIdx ← opaqueTheorem "bad_id" (return bodyIdx) (return badType)
+  return (opaqueIdx, realType)
+
+/-- Reference an opaque-id (var 0 disguised as opaque tag) that was never
+registered.  `runCheckDebug` should reject because lookup fails. -/
+def buildUnregisteredOpaque : BuilderM (Nat × Nat) := do
+  let u0  ← typ 0
+  let v0  ← var 0
+  let v1  ← var 1
+  let innerFn ← fn v0 v1
+  let typeIdx ← fn u0 innerFn
+  -- An opaque node with no corresponding entry in the theoremAlist.
+  let bogus ← opq 999
+  return (bogus, typeIdx)
 
 end Cert

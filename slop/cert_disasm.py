@@ -80,6 +80,7 @@ TAG_NAMES = {
     12: "EQ", 13: "REFL", 14: "ERC",
     15: "NAT", 16: "ZERO", 17: "SUCC", 18: "NRC",
     19: "UNIT", 20: "INTRO", 21: "FLS", 22: "FRC",
+    23: "OPAQUE",
 }
 RULE_NAMES = {
     0: "ID", 1: "CONG-LAM", 2: "CONG-FN", 3: "CONG-APP",
@@ -104,7 +105,7 @@ def disasm_node(idx, cell):
     tag = parse_n(inner[0])
     name = TAG_NAMES.get(tag, f"#{tag}")
     rest = inner[1:]
-    if tag in (0, 3):                         # var / typ — payload only
+    if tag in (0, 3, 23):                     # var / typ / opaque — payload only
         body = f"{rest[0]}"
     elif tag in (1, 2, 4, 5, 8, 12):          # lam/app/fn/prod/sum/eq — child idxs
         body = " ".join(f"#{c}" for c in rest)
