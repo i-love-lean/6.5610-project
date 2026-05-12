@@ -1,117 +1,296 @@
+;; μLean dependent type checker, ported from Dependent.lean
+
+;; ---------- argument accessors ----------
+;; Terms are encoded as lists `(op arg1 arg2 ...)` where `op` is a field
+;; element identifying the constructor (see `Term.toString` in Dependent.lean).
+
 !(def arg1 (lambda (x) (car (cdr x))))
-
 !(def arg2 (lambda (x) (car (cdr (cdr x)))))
-
 !(def arg3 (lambda (x) (car (cdr (cdr (cdr x))))))
 
-!(def arg4 (lambda (x) (car (cdr (cdr (cdr (cdr x)))))))
-
-!(defrec geti (lambda (xs i) (if (= i 0) (car xs) (geti (cdr xs) (- i 1)))))
-
+;; ---------- boolean / list helpers ----------
 !(def and (lambda (x y) (if x (if y t nil) nil)))
-
 !(def or (lambda (x y) (if x t (if y t nil))))
-
-!(def is_app1 (lambda (term op) (if (= (car term) 2n) (= (car (arg1 term)) op) nil)))
-
-!(def is_app2 (lambda (term op) (if (= (car term) 2n) (is_app1 (arg1 term) op) nil)))
-
-!(def is_app3 (lambda (term op) (if (= (car term) 2n) (is_app2 (arg1 term) op) nil)))
-
-!(def is_app4 (lambda (term op) (if (= (car term) 2n) (is_app3 (arg1 term) op) nil)))
-
-!(def is_app5 (lambda (term op) (if (= (car term) 2n) (is_app4 (arg1 term) op) nil)))
-
-!(defrec map (lambda (f xs) (if (eq xs nil) nil (cons (f (car xs)) (map f (cdr xs))))))
-
+!(defrec geti (lambda (xs i) (if (= i 0) (car xs) (geti (cdr xs) (- i 1)))))
 !(defrec len (lambda (xs) (if (eq xs nil) 0 (+ 1 (len (cdr xs))))))
 
-!(def dbtypes (list '(3n 1) '(4n (3n 0) (4n (4n (0n 0) (3n 0)) (4n (0n 1) (4n (2n (0n 1) (4n (0n 2) (3n 0)) (0n 0) (0n 2)) (5n (0n 3) (0n 2)))))) '(4n (3n 0) (4n (4n (0n 0) (3n 0)) (4n (4n (5n (0n 1) (0n 0)) (3n 0)) (4n (4n (0n 2) (4n (2n (0n 2) (4n (0n 3) (3n 0)) (0n 0) (0n 3)) (2n (0n 2) (4n (5n (0n 4) (0n 3)) (3n 0)) (2n (2n (2n (2n (6n) (4n (3n 0) (4n (4n (0n 0) (3n 0)) (4n (0n 1) (4n (2n (0n 1) (4n (0n 2) (3n 0)) (0n 0) (0n 2)) (5n (0n 3) (0n 2)))))) (0n 4) (3n 0)) (4n (4n (0n 4) (3n 0)) (4n (0n 5) (4n (2n (0n 1) (4n (0n 6) (3n 0)) (0n 0) (0n 6)) (5n (0n 7) (0n 2))))) (0n 3) (4n (0n 4) (3n 0))) (4n (0n 4) (4n (2n (0n 4) (4n (0n 5) (3n 0)) (0n 0) (0n 5)) (5n (0n 6) (0n 5)))) (0n 1) (0n 4)) (4n (2n (0n 3) (4n (0n 4) (3n 0)) (0n 1) (0n 4)) (5n (0n 5) (0n 4))) (0n 0) (2n (0n 3) (4n (0n 4) (3n 0)) (0n 1) (0n 4))) (5n (0n 4) (0n 3))))) (4n (5n (0n 3) (0n 2)) (2n (0n 2) (4n (5n (0n 4) (0n 3)) (3n 0)) (0n 0) (5n (0n 4) (0n 3)))))))) '(4n (3n 0) (4n (3n 0) (4n (0n 1) (8n (0n 2) (0n 1))))) '(4n (3n 0) (4n (3n 0) (4n (0n 0) (8n (0n 2) (0n 1))))) '(4n (3n 0) (4n (3n 0) (4n (4n (8n (0n 1) (0n 0)) (3n 0)) (4n (4n (0n 2) (2n (0n 1) (4n (8n (0n 3) (0n 2)) (3n 0)) (2n (2n (2n (9n) (4n (3n 0) (4n (3n 0) (4n (0n 1) (8n (0n 2) (0n 1))))) (0n 3) (3n 0)) (4n (3n 0) (4n (0n 4) (8n (0n 5) (0n 1)))) (0n 2) (3n 0)) (4n (0n 3) (8n (0n 4) (0n 3))) (0n 0) (0n 3)) (8n (0n 3) (0n 2)))) (4n (4n (0n 2) (2n (0n 2) (4n (8n (0n 4) (0n 3)) (3n 0)) (2n (2n (2n (10n) (4n (3n 0) (4n (3n 0) (4n (0n 0) (8n (0n 2) (0n 1))))) (0n 4) (3n 0)) (4n (3n 0) (4n (0n 0) (8n (0n 6) (0n 1)))) (0n 3) (3n 0)) (4n (0n 3) (8n (0n 5) (0n 4))) (0n 0) (0n 3)) (8n (0n 4) (0n 3)))) (4n (8n (0n 4) (0n 3)) (2n (0n 3) (4n (8n (0n 5) (0n 4)) (3n 0)) (0n 0) (8n (0n 5) (0n 4))))))))) '(4n (3n 0) (4n (0n 0) (12n (0n 0) (0n 0) (0n 1)))) '(4n (3n 0) (4n (0n 0) (4n (4n (0n 1) (4n (12n (0n 1) (0n 0) (0n 2)) (3n 0))) (4n (2n (2n (0n 0) (4n (0n 2) (4n (12n (0n 2) (0n 0) (0n 3)) (3n 0))) (0n 1) (0n 2)) (4n (12n (0n 1) (0n 1) (0n 2)) (3n 0)) (2n (2n (13n) (4n (3n 0) (4n (0n 0) (12n (0n 0) (0n 0) (0n 1)))) (0n 2) (3n 0)) (4n (0n 2) (12n (0n 0) (0n 0) (0n 3))) (0n 1) (0n 2)) (12n (0n 1) (0n 1) (0n 2))) (4n (0n 3) (4n (12n (0n 3) (0n 0) (0n 4)) (2n (2n (0n 3) (4n (0n 5) (4n (12n (0n 5) (0n 0) (0n 6)) (3n 0))) (0n 1) (0n 5)) (4n (12n (0n 4) (0n 1) (0n 5)) (3n 0)) (0n 0) (12n (0n 4) (0n 1) (0n 5))))))))) '(3n 0) '(15n) '(4n (15n) (15n)) '(4n (4n (15n) (3n 0)) (4n (2n (0n 0) (4n (15n) (3n 0)) (16n) (15n)) (4n (4n (15n) (4n (2n (0n 2) (4n (15n) (3n 0)) (0n 0) (15n)) (2n (0n 3) (4n (15n) (3n 0)) (2n (17n) (4n (15n) (15n)) (0n 1) (15n)) (15n)))) (4n (15n) (2n (0n 3) (4n (15n) (3n 0)) (0n 0) (15n)))))) '(3n 0) '(19n) '(3n 0) '(4n (4n (21n) (3n 0)) (4n (21n) (2n (0n 1) (4n (21n) (3n 0)) (0n 0) (21n))))))
+;; Detect "outer term is `app` nested N levels with constructor `op` at the bottom".
+;; The new app encoding `(2n f phi a)` has the function at `arg1`.
+!(def is_app1 (lambda (term op) (if (= (car term) 2n) (= (car (arg1 term)) op) nil)))
+!(def is_app2 (lambda (term op) (if (= (car term) 2n) (is_app1 (arg1 term) op) nil)))
+!(def is_app3 (lambda (term op) (if (= (car term) 2n) (is_app2 (arg1 term) op) nil)))
+!(def is_app4 (lambda (term op) (if (= (car term) 2n) (is_app3 (arg1 term) op) nil)))
+!(def is_app5 (lambda (term op) (if (= (car term) 2n) (is_app4 (arg1 term) op) nil)))
 
-!(def get-dbtype (lambda (term) (let ((op (car term))) (if (= op 3n) (if (= (arg1 term) 0) (geti dbtypes 0) term) (if (= op 6n) (geti dbtypes 1) (if (= op 7n) (geti dbtypes 2) (if (= op 9n) (geti dbtypes 3) (if (= op 10n) (geti dbtypes 4) (if (= op 11n) (geti dbtypes 5) (if (= op 13n) (geti dbtypes 6) (if (= op 14n) (geti dbtypes 7) (if (= op 15n) (geti dbtypes 8) (if (= op 16n) (geti dbtypes 9) (if (= op 17n) (geti dbtypes 10) (if (= op 18n) (geti dbtypes 11) (if (= op 19n) (geti dbtypes 12) (if (= op 20n) (geti dbtypes 13) (if (= op 21n) (geti dbtypes 14) (if (= op 22n) (geti dbtypes 15) nil)))))))))))))))))))
+;; ---------- dbtypes ----------
+;; Hardcoded list of types of built-in constructors / eliminators, in the order
+;; expected by `get-dbtype` below.  Mirrors `dbtypes` in Dependent.lean (and
+;; the exported `dbtypes` JSON file at the repo root).
+!(def dbtypes '(
+  ;; 0  pmk
+  (4n (3n 0) (4n (4n (0n 0) (3n 0)) (4n (0n 1) (4n (2n (0n 1) (4n (0n 2) (3n 0)) (0n 0)) (5n (0n 3) (0n 2))))))
+  ;; 1  prod_rec
+  (4n (3n 0) (4n (4n (0n 0) (3n 0)) (4n (4n (5n (0n 1) (0n 0)) (3n 0)) (4n (4n (0n 2) (4n (2n (0n 2) (4n (0n 3) (3n 0)) (0n 0)) (2n (0n 2) (4n (5n (0n 4) (0n 3)) (3n 0)) (2n (2n (2n (2n (6n) (4n (3n 0) (4n (4n (0n 0) (3n 0)) (4n (0n 1) (4n (2n (0n 1) (4n (0n 2) (3n 0)) (0n 0)) (5n (0n 3) (0n 2)))))) (0n 4)) (4n (4n (0n 4) (3n 0)) (4n (0n 5) (4n (2n (0n 1) (4n (0n 6) (3n 0)) (0n 0)) (5n (0n 7) (0n 2))))) (0n 3)) (4n (0n 4) (4n (2n (0n 4) (4n (0n 5) (3n 0)) (0n 0)) (5n (0n 6) (0n 5)))) (0n 1)) (4n (2n (0n 3) (4n (0n 4) (3n 0)) (0n 1)) (5n (0n 5) (0n 4))) (0n 0))))) (4n (5n (0n 3) (0n 2)) (2n (0n 2) (4n (5n (0n 4) (0n 3)) (3n 0)) (0n 0)))))))
+  ;; 2  inl
+  (4n (3n 0) (4n (3n 0) (4n (0n 1) (8n (0n 2) (0n 1)))))
+  ;; 3  inr
+  (4n (3n 0) (4n (3n 0) (4n (0n 0) (8n (0n 2) (0n 1)))))
+  ;; 4  sum_rec
+  (4n (3n 0) (4n (3n 0) (4n (4n (8n (0n 1) (0n 0)) (3n 0)) (4n (4n (0n 2) (2n (0n 1) (4n (8n (0n 3) (0n 2)) (3n 0)) (2n (2n (2n (9n) (4n (3n 0) (4n (3n 0) (4n (0n 1) (8n (0n 2) (0n 1))))) (0n 3)) (4n (3n 0) (4n (0n 4) (8n (0n 5) (0n 1)))) (0n 2)) (4n (0n 3) (8n (0n 4) (0n 3))) (0n 0)))) (4n (4n (0n 2) (2n (0n 2) (4n (8n (0n 4) (0n 3)) (3n 0)) (2n (2n (2n (10n) (4n (3n 0) (4n (3n 0) (4n (0n 0) (8n (0n 2) (0n 1))))) (0n 4)) (4n (3n 0) (4n (0n 0) (8n (0n 6) (0n 1)))) (0n 3)) (4n (0n 3) (8n (0n 5) (0n 4))) (0n 0)))) (4n (8n (0n 4) (0n 3)) (2n (0n 3) (4n (8n (0n 5) (0n 4)) (3n 0)) (0n 0))))))))
+  ;; 5  refl
+  (4n (3n 0) (4n (0n 0) (12n (0n 0) (0n 0) (0n 1))))
+  ;; 6  eq_rec
+  (4n (3n 0) (4n (0n 0) (4n (4n (0n 1) (4n (12n (0n 1) (0n 0) (0n 2)) (3n 0))) (4n (2n (2n (0n 0) (4n (0n 2) (4n (12n (0n 2) (0n 0) (0n 3)) (3n 0))) (0n 1)) (4n (12n (0n 1) (0n 1) (0n 2)) (3n 0)) (2n (2n (13n) (4n (3n 0) (4n (0n 0) (12n (0n 0) (0n 0) (0n 1)))) (0n 2)) (4n (0n 2) (12n (0n 0) (0n 0) (0n 3))) (0n 1))) (4n (0n 3) (4n (12n (0n 3) (0n 0) (0n 4)) (2n (2n (0n 3) (4n (0n 5) (4n (12n (0n 5) (0n 0) (0n 6)) (3n 0))) (0n 1)) (4n (12n (0n 4) (0n 1) (0n 5)) (3n 0)) (0n 0))))))))
+  ;; 7  nat
+  (3n 0)
+  ;; 8  zero
+  (15n)
+  ;; 9  succ
+  (4n (15n) (15n))
+  ;; 10 nat_rec  (uses U_1 = (3n 1) for large elimination)
+  (4n (4n (15n) (3n 1)) (4n (2n (0n 0) (4n (15n) (3n 1)) (16n)) (4n (4n (15n) (4n (2n (0n 2) (4n (15n) (3n 1)) (0n 0)) (2n (0n 3) (4n (15n) (3n 1)) (2n (17n) (4n (15n) (15n)) (0n 1))))) (4n (15n) (2n (0n 3) (4n (15n) (3n 1)) (0n 0))))))
+  ;; 11 unit
+  (3n 0)
+  ;; 12 intro
+  (19n)
+  ;; 13 fls
+  (3n 0)
+  ;; 14 fls_rec
+  (4n (4n (21n) (3n 0)) (4n (21n) (2n (0n 1) (4n (21n) (3n 0)) (0n 0))))
+))
 
-!(defrec term-rec (lambda (term s fdep fvar) (let ((op (car term))) (if (= op 0n) (fvar s (arg1 term)) (if (= op 1n) (list 1n (term-rec (arg1 term) (fdep s) fdep fvar) (term-rec (arg2 term) (fdep s) fdep fvar)) (if (= op 2n) (list 2n (term-rec (arg1 term) s fdep fvar) (term-rec (arg2 term) s fdep fvar) (term-rec (arg3 term) s fdep fvar) (term-rec (arg4 term) s fdep fvar)) (if (= op 4n) (list 4n (term-rec (arg1 term) s fdep fvar) (term-rec (arg2 term) (fdep s) fdep fvar)) (if (= op 5n) (list 5n (term-rec (arg1 term) s fdep fvar) (term-rec (arg2 term) s fdep fvar)) (if (= op 8n) (list 8n (term-rec (arg1 term) s fdep fvar) (term-rec (arg2 term) s fdep fvar)) (if (= op 12n) (list 12n (term-rec (arg1 term) s fdep fvar) (term-rec (arg2 term) s fdep fvar) (term-rec (arg3 term) s fdep fvar)) term))))))))))
+;; Map a term to the type ascribed to its head constructor.  For `typ u` the
+;; "type" is `typ (u + 1)` (Russell-style universes).  For a constructor like
+;; `pmk` it is the corresponding entry in `dbtypes`.
+!(def get-dbtype (lambda (term)
+  (let ((op (car term)))
+    (if (= op 3n)  (list 3n (+ (arg1 term) 1))
+    (if (= op 6n)  (geti dbtypes 0)
+    (if (= op 7n)  (geti dbtypes 1)
+    (if (= op 9n)  (geti dbtypes 2)
+    (if (= op 10n) (geti dbtypes 3)
+    (if (= op 11n) (geti dbtypes 4)
+    (if (= op 13n) (geti dbtypes 5)
+    (if (= op 14n) (geti dbtypes 6)
+    (if (= op 15n) (geti dbtypes 7)
+    (if (= op 16n) (geti dbtypes 8)
+    (if (= op 17n) (geti dbtypes 9)
+    (if (= op 18n) (geti dbtypes 10)
+    (if (= op 19n) (geti dbtypes 11)
+    (if (= op 20n) (geti dbtypes 12)
+    (if (= op 21n) (geti dbtypes 13)
+    (if (= op 22n) (geti dbtypes 14)
+      nil)))))))))))))))))))
 
-!(def incr (lambda (term) (term-rec term 0 (lambda (d) (+ d 1)) (lambda (d x) (list 0n (if (<= d x) (+ x 1) x))))))
+;; ---------- term recursion ----------
+;; `term-rec` maps `fvar` over each free `var` in `term`.  `d` tracks how many
+;; binders we've descended through; `lam` and the codomain of `fn` each
+;; introduce a binder (matches `term_rec` in Dependent.lean).
+!(defrec term-rec (lambda (d term fvar)
+  (let ((op (car term)))
+    (if (= op 0n)  (fvar d (arg1 term))
+    (if (= op 1n)  (list 1n (term-rec (+ d 1) (arg1 term) fvar))
+    (if (= op 2n)  (list 2n (term-rec d (arg1 term) fvar)
+                            (term-rec d (arg2 term) fvar)
+                            (term-rec d (arg3 term) fvar))
+    (if (= op 4n)  (list 4n (term-rec d (arg1 term) fvar)
+                            (term-rec (+ d 1) (arg2 term) fvar))
+    (if (= op 5n)  (list 5n (term-rec d (arg1 term) fvar)
+                            (term-rec d (arg2 term) fvar))
+    (if (= op 8n)  (list 8n (term-rec d (arg1 term) fvar)
+                            (term-rec d (arg2 term) fvar))
+    (if (= op 12n) (list 12n (term-rec d (arg1 term) fvar)
+                             (term-rec d (arg2 term) fvar)
+                             (term-rec d (arg3 term) fvar))
+      term))))))))))
 
-!(def sub (lambda (term t_prime) (term-rec term (cons 0 t_prime) (lambda (s) (cons (+ (car s) 1) (incr (cdr s)))) (lambda (s x) (let ((d (car s)) (tp (cdr s))) (if (= x d) tp (list 0n (if (< d x) (- x 1) x))))))))
+;; Increment every free variable index by `k`.
+!(def incr (lambda (k term)
+  (term-rec 0 term (lambda (d x)
+    (list 0n (if (<= d x) (+ x k) x))))))
 
-!(defrec evaluate (lambda (term) (let ((op (car term))) (if (= op 1n) (list 1n (evaluate (arg1 term)) (evaluate (arg2 term))) (if (= op 4n) (list 4n (evaluate (arg1 term)) (evaluate (arg2 term))) (if (= op 5n) (list 5n (evaluate (arg1 term)) (evaluate (arg2 term))) (if (= op 8n) (list 8n (evaluate (arg1 term)) (evaluate (arg2 term))) (if (= op 12n) (list 12n (evaluate (arg1 term)) (evaluate (arg2 term)) (evaluate (arg3 term))) (if (= op 2n) (let ((f_prime (evaluate (arg1 term)))
-            (a_prime (evaluate (arg3 term)))
-            (phi (arg2 term))
-            (phi_prime (evaluate phi))
-            (alpha_prime (evaluate (arg4 term))))
-        (let ((f_op (car f_prime))) (if (= f_op 1n) (evaluate (sub (arg1 f_prime) a_prime)) (if (and (is_app4 f_prime 7n) (is_app4 a_prime 6n)) (let ((g (arg3 f_prime))
-                  (alpha_gamma (arg4 f_prime))
-                  (a_val (arg3 (arg1 a_prime)))
-                  (b (arg3 a_prime))
-                  (beta (arg4 a_prime))
-                  (alpha_val (arg1 alpha_gamma))
-                  (gamma (arg2 alpha_gamma)))
-              (evaluate (list 2n (list 2n g (list 4n alpha_val gamma) a_val alpha_val) (sub gamma a_val) b beta))) (if (and (is_app5 f_prime 11n) (is_app3 a_prime 9n)) (let ((g (arg3 (arg1 f_prime)))
-                  (gamma (arg4 (arg1 f_prime)))
-                  (a_val (arg3 a_prime))
-                  (alpha_val (arg4 a_prime)))
-              (evaluate (list 2n g gamma a_val alpha_val))) (if (and (is_app5 f_prime 11n) (is_app3 a_prime 10n)) (let ((g (arg3 f_prime))
-                  (gamma (arg4 f_prime))
-                  (b_val (arg3 a_prime))
-                  (beta_val (arg4 a_prime)))
-              (evaluate (list 2n g gamma b_val beta_val))) (if (and (is_app5 f_prime 14n) (is_app2 a_prime 13n)) (let ((ha (arg3 (arg1 f_prime)))) (evaluate ha)) (if (and (is_app3 f_prime 18n) (= (car a_prime) 16n)) (let ((z (arg3 (arg1 f_prime)))) (evaluate z)) (if (and (is_app3 f_prime 18n) (is_app1 a_prime 17n)) (let ((m (arg3 (arg1 (arg1 f_prime))))
-                  (g (arg3 f_prime))
-                  (gamma (arg2 (arg4 f_prime)))
-                  (n (arg3 a_prime)))
+;; Substitute `t-prime` for the variable at de Bruijn index 0 in `term`.
+!(def sub (lambda (t-prime term)
+  (term-rec 0 term (lambda (d x)
+    (if (= x d) (incr d t-prime)
+      (list 0n (if (< d x) (- x 1) x)))))))
+
+;; ---------- evaluator ----------
+;; A janky NbE-style evaluator.  Reduces `app`-nodes using the appropriate
+;; iota/beta rule when the function head is a known constructor; otherwise
+;; just normalises subterms.  Assumes input is well-typed.
+!(defrec evaluate (lambda (term)
+  (let ((op (car term)))
+    (if (= op 1n)
+      (list 1n (evaluate (arg1 term)))
+    (if (= op 4n)
+      (list 4n (evaluate (arg1 term)) (evaluate (arg2 term)))
+    (if (= op 5n)
+      (list 5n (evaluate (arg1 term)) (evaluate (arg2 term)))
+    (if (= op 8n)
+      (list 8n (evaluate (arg1 term)) (evaluate (arg2 term)))
+    (if (= op 12n)
+      (list 12n (evaluate (arg1 term))
+                (evaluate (arg2 term))
+                (evaluate (arg3 term)))
+    (if (= op 2n)
+      ;; app f phi a
+      (let ((f-prime (evaluate (arg1 term)))
+            (phi     (arg2 term))
+            (a-prime (evaluate (arg3 term))))
+        (if (= (car f-prime) 1n)
+          ;; (lam b) a'  =>  sub a' into b, then evaluate
+          (evaluate (sub a-prime (arg1 f-prime)))
+        (if (and (is_app4 f-prime 7n) (is_app4 a-prime 6n))
+          ;; prod_rec ... g  applied to  pmk ... a b
+          ;;   phi-of-f' = ((alpha => gamma) => _)
+          (let ((alpha-gamma (arg1 (arg2 f-prime)))
+                (g (arg3 f-prime))
+                (a-val (arg3 (arg1 a-prime)))
+                (b (arg3 a-prime)))
+            (let ((alpha (arg1 alpha-gamma))
+                  (gamma (arg2 alpha-gamma)))
               (evaluate (list 2n
-                (list 2n g (list 4n '(15n) gamma) n '(15n))
-                (sub gamma n)
-                (list 2n f_prime phi n '(15n))
-                (list 2n m (list 4n '(15n) '(3n 0)) n '(15n))))) (list 2n f_prime phi_prime a_prime alpha_prime)))))))))) term)))))))))
+                (list 2n g (list 4n alpha gamma) a-val)
+                (sub a-val gamma)
+                b))))
+        (if (and (is_app5 f-prime 11n) (is_app3 a-prime 9n))
+          ;; sum_rec ... g_left _ _  applied to  inl ... a
+          (let ((g     (arg3 (arg1 f-prime)))
+                (gamma (arg1 (arg2 (arg1 f-prime))))
+                (a-val (arg3 a-prime)))
+            (evaluate (list 2n g gamma a-val)))
+        (if (and (is_app5 f-prime 11n) (is_app3 a-prime 10n))
+          ;; sum_rec ... g_right  applied to  inr ... b
+          (let ((g     (arg3 f-prime))
+                (gamma (arg1 (arg2 f-prime)))
+                (b-val (arg3 a-prime)))
+            (evaluate (list 2n g gamma b-val)))
+        (if (and (is_app5 f-prime 14n) (is_app2 a-prime 13n))
+          ;; eq_rec ... ha _ _  applied to  refl ... ...
+          (let ((ha (arg3 (arg1 f-prime))))
+            (evaluate ha))
+        (if (and (is_app3 f-prime 18n) (= (car a-prime) 16n))
+          ;; nat_rec ... z _ _  applied to  zero
+          (let ((z (arg3 (arg1 f-prime))))
+            (evaluate z))
+        (if (and (is_app3 f-prime 18n) (is_app1 a-prime 17n))
+          ;; nat_rec ... g  applied to  succ n
+          ;;   phi-of-f' = ((Nat => gamma) => _)
+          (let ((g     (arg3 f-prime))
+                (gamma (arg2 (arg1 (arg2 f-prime))))
+                (n     (arg3 a-prime)))
+            (evaluate (list 2n
+              (list 2n g (list 4n '(15n) gamma) n)
+              (sub n gamma)
+              (list 2n f-prime phi n))))
+          ;; default: rebuild the app node, normalising phi too
+          (list 2n f-prime (evaluate phi) a-prime)))))))))
+      term)))))))))
 
-!(defrec cumeq (lambda (a a_prime) (if (and (eq a '(3n 0)) (eq a_prime '(3n 1))) t (eq a (evaluate a_prime)))))
+;; ---------- equality up to cumulativity ----------
+;; cumeq lhs rhs
+;;   - both `typ`?  cumulative universes: u <= u'
+;;   - else: lhs == evaluate(rhs)  (lhs is assumed already normalised)
+!(def cumeq (lambda (a a-prime)
+  (if (and (= (car a) 3n) (= (car a-prime) 3n))
+    (<= (arg1 a) (arg1 a-prime))
+    (eq a (evaluate a-prime)))))
 
-!(defrec check (lambda (env term tau) (let ((t_op (car term)) (tau_op (car tau))) (if (= t_op 0n) (let ((x (arg1 term)))
+;; ---------- the type checker ----------
+;; Note: Lurk's `and` is a regular function, so its arguments are always
+;; evaluated.  We therefore can't use `(and (= t-op N) (= (car (arg2 term)) M))`
+;; — for terms that aren't shaped right, the inner accessor blows up.  Instead
+;; the cases below dispatch on `t-op` first and only then look at `tau-op` /
+;; sub-fields, falling through to the eval-and-retry default branch.
+!(defrec check (lambda (env term tau)
+  (let ((t-op   (car term))
+        (tau-op (car tau))
+        (default-branch (lambda ()
+          (let ((tau-prime (evaluate tau)))
+            (if (eq tau-prime tau)
+              (cumeq (get-dbtype term) tau)
+              (check env term tau-prime))))))
+    (if (= t-op 0n)
+      ;; var x: look up in env, increment by x+1 to skip the env binders
+      (let ((x (arg1 term)))
         (if (< x (len env))
-          (cumeq (evaluate (geti env x)) tau)
-          nil)) (if (and (= t_op 1n) (= tau_op 4n)) (let ((b (arg1 term))
-            (beta (arg2 term))
-            (alpha (arg1 tau))
-            (beta_prime (arg2 tau))
-            (new_env (cons (incr alpha) (map incr env))))
-        (if (check new_env b beta)
-          (cumeq (evaluate beta) (evaluate beta_prime))
-          nil)) (if (= t_op 2n) (let ((f (arg1 term))
-            (phi (arg2 term))
-            (a (arg3 term))
-            (alpha_prime (arg4 term)))
+          (cumeq (evaluate (incr (+ x 1) (geti env x))) tau)
+          nil))
+    (if (= t-op 1n)
+      (if (= tau-op 4n)
+        ;; lam b  vs  alpha => beta:  check b in extended env against beta
+        (let ((b     (arg1 term))
+              (alpha (arg1 tau))
+              (beta  (arg2 tau)))
+          (check (cons alpha env) b beta))
+        (default-branch))
+    (if (= t-op 2n)
+      ;; only the variant with phi = (alpha => beta) is handled directly;
+      ;; everything else (e.g. an app whose phi is itself an app) falls
+      ;; through to the default eval-and-retry branch.
+      (let ((phi (arg2 term)))
         (if (= (car phi) 4n)
-          (let ((alpha (arg1 phi))
-                (beta (arg2 phi)))
+          (let ((f     (arg1 term))
+                (a     (arg3 term))
+                (alpha (arg1 phi))
+                (beta  (arg2 phi)))
             (if (check env f phi)
               (if (check env a alpha)
-                (if (cumeq (evaluate alpha) (evaluate alpha_prime))
-                  (cumeq (evaluate (sub beta a)) tau)
-                  nil)
+                (cumeq (evaluate (sub a beta)) tau)
                 nil)
               nil))
-          (cumeq (get-dbtype term) tau))) (if (and (= t_op 4n) (= tau_op 3n)) (let ((alpha (arg1 term))
-            (beta (arg2 term))
-            (new_env (cons (incr alpha) (map incr env))))
-        (if (check env alpha tau)
-          (check new_env beta tau)
-          nil)) (if (and (= t_op 5n) (= tau_op 3n)) (let ((alpha (arg1 term))
-            (beta (arg2 term)))
-        (if (check env alpha tau)
-          (check env beta (list 4n alpha '(3n 0)))
-          nil)) (if (and (= t_op 8n) (= tau_op 3n)) (let ((alpha (arg1 term))
-            (beta (arg2 term)))
-        (if (check env alpha tau)
-          (check env beta tau)
-          nil)) (if (and (= t_op 12n) (= tau_op 3n)) (let ((a (arg1 term))
-            (a_prime (arg2 term))
-            (alpha (arg3 term)))
-        (if (check env a alpha)
-          (if (check env a_prime alpha)
-            (check env alpha tau)
-            nil)
-          nil)) (if (= t_op 3n) (if (= (arg1 term) 1) nil (cumeq (get-dbtype term) tau)) (cumeq (get-dbtype term) tau))))))))))))
+          (default-branch)))
+    (if (= t-op 4n)
+      (if (= tau-op 3n)
+        ;; alpha => beta : typ u
+        (let ((alpha (arg1 term))
+              (beta  (arg2 term)))
+          (if (check env alpha tau)
+            (check (cons alpha env) beta tau)
+            nil))
+        (default-branch))
+    (if (= t-op 5n)
+      (if (= tau-op 3n)
+        ;; prod alpha beta : typ u  -- second component must be `alpha => U`
+        (let ((alpha (arg1 term))
+              (beta  (arg2 term)))
+          (if (check env alpha tau)
+            (check env beta (list 4n alpha '(3n 0)))
+            nil))
+        (default-branch))
+    (if (= t-op 8n)
+      (if (= tau-op 3n)
+        ;; sum alpha beta : typ u
+        (let ((alpha (arg1 term))
+              (beta  (arg2 term)))
+          (if (check env alpha tau)
+            (check env beta tau)
+            nil))
+        (default-branch))
+    (if (= t-op 12n)
+      (if (= tau-op 3n)
+        ;; eq a a' alpha : typ u
+        (let ((a       (arg1 term))
+              (a-prime (arg2 term))
+              (alpha   (arg3 term)))
+          (if (check env a alpha)
+            (if (check env a-prime alpha)
+              (check env alpha tau)
+              nil)
+            nil))
+        (default-branch))
+      ;; default: try reducing tau; if it's already normal, fall back to dbtype
+      (let ((tau-prime (evaluate tau)))
+        (if (eq tau-prime tau)
+          (cumeq (get-dbtype term) tau)
+          (check env term tau-prime)))
+      ))))))))))
 
-!(def check_pair (lambda (term tau) (if (check nil tau '(3n 1)) (check nil term tau) nil)))
+;; User-facing entry point: first verify that `tau` itself is a (small)
+;; type, then verify that `term` has type `tau`.  Hardcoded universe ceiling
+;; mirrors Dependent.lean's `checkuser`.
+!(def check_pair (lambda (term tau)
+  (if (check nil tau '(3n 2))
+    (check nil term tau)
+    nil)))
