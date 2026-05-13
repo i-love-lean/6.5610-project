@@ -1,4 +1,4 @@
-import Lean.Elab
+import Lean.Elab.Term
 import Std.Data.HashMap
 
 /-
@@ -327,7 +327,7 @@ open Lean Elab Term in
 /-- Compute `dbtype` at compile-time -/
 elab "precompute_dbtypes" : term => do
   return toExpr <|
-    [pmk, prod_rec, inl, inr, sum_rec, refl, eq_rec, ℕ, zero, succ, nat_rec, unit, intro, ⊥, fls_rec].map (dbify [] ·.btype)
+    #[pmk, prod_rec, inl, inr, sum_rec, refl, eq_rec, ℕ, zero, succ, nat_rec, unit, intro, ⊥, fls_rec].map (dbify [] ·.btype)
 
 def dbtypes := precompute_dbtypes
 
@@ -1575,6 +1575,10 @@ def sqrt_two_irrational :=
     ]),
     n∶ℕ ⇨ m∶ℕ ⇨ hm∶(’m =ₙ 0 ⇨ ⊥) ⇨ h∶(2 * (’n * ’n) =ₙ ’m * ’m) ⇨ ⊥)
 
+/-
+### Fermat's Last Theorem
+-/
+
 /-- Exponentiation -/
 def pow' :=
   (la [’n]
@@ -1596,6 +1600,10 @@ def two_pow_four_eq_sixteen :=
 def fermat :=
   (name "sorry",
     a∶ℕ ⇨ b∶ℕ ⇨ c∶ℕ ⇨ n∶ℕ ⇨ (’a =ₙ 0 ⇨ ⊥) ⇨ (’b =ₙ 0 ⇨ ⊥) ⇨ (’c =ₙ 0 ⇨ ⊥) ⇨ (’n =ₙ 0 ⇨ ⊥) ⇨ (’n =ₙ 1 ⇨ ⊥) ⇨ (’n =ₙ 2 ⇨ ⊥) ⇨ ’a ^ ’n + ’b ^ ’n =ₙ ’c ^ ’n ⇨ ⊥)
+
+/-
+## Test harness
+-/
 
 /-- Can generate a full list with `tail +500 Dependent.lean | rg "^def ([^ ]*) :=\$" -or '  ("$1", $1),'` -/
 def ldefs := [
