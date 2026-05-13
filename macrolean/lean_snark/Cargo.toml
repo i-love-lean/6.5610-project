@@ -1,0 +1,16 @@
+[workspace]
+members = ["program", "script"]
+resolver = "2"
+
+# nanoda_lib is a path dependency with its own workspace-less manifest — it is
+# intentionally NOT a workspace member so we can keep it as a forked external
+# crate and not fight its release/lto profile settings.
+
+[profile.release]
+opt-level = 3
+# `lto = "fat"` triggers an LLVM RISC-V backend bug ("symbol '.LJTI0_0' is
+# already defined") when compiling the SP1 guest under codegen-units=1. ThinLTO
+# avoids the duplicate jump-table label issue and still inlines across crate
+# boundaries, which is where most of the cycle-count win comes from.
+lto = "thin"
+codegen-units = 1
