@@ -1,0 +1,6 @@
+[submodule "macrolean/nanoda_lib"]
+	path = macrolean/nanoda_lib
+	url = https://github.com/ammkrn/nanoda_lib.git
+[submodule "macrolean/lean4export"]
+	path = macrolean/lean4export
+	url = https://github.com/leanprover/lean4export.git
