@@ -656,7 +656,22 @@ def clc (α a : Term) : List (Term × Term) → Term
     else
       clc_helper α a b hab
   | [] =>
+    -- Panicking is fine inside tactics
     panic "clc must be called with a nonempty list!"
+
+/-- `clc` wrapped in an `eq_symm` -/
+def sclc (α a : Term) (l : List (Term × Term)) :=
+  -- Yes this can panic too, whatever
+  □ eq_symm [α, a, l.getLast!.1, clc α a l]
+
+/-- Turn a = b into f a = f b -/
+def cong (α a b f h : Term) :=
+  match f with
+  | vlam s b' =>
+    let f' := subca s a b'
+    □ rw [α, a, b, vlam s (eq f' b' α), h, ab refl [α, f']]
+  | _ =>
+    panic "congn needs a function!"
 
 /-
 ### Natural numbers and arithmetic
@@ -707,33 +722,21 @@ def two_plus_two_eq_four :=
     2 + 2 =ₙ 4)
 
 /-- n = m → suc n = suc m -/
-def cong_suc :=
+def cong_succ :=
   (la [’n, ’m, ’h]
-    (□ rw [
-      ℕ, ’n, ’m,
-      la [’x] (suc ’n =ₙ suc ’x),
-      ’h, ab refl [ℕ, suc ’n]
-    ]),
+    (cong ℕ ’n ’m (la [’x] (suc ’x)) ’h),
     n∶ℕ ⇨ m∶ℕ ⇨ h∶(’n =ₙ ’m) ⇨ suc ’n =ₙ suc ’m)
 
 /-- n = m → k + n = k + m -/
 def cong_add_l :=
   (la [’n, ’m, ’k, ’h]
-    (□ rw [
-      ℕ, ’n, ’m,
-      la [’x] (’k + ’n =ₙ ’k + ’x),
-      ’h, ab refl [ℕ, ’k + ’n]
-    ]),
+    (cong ℕ ’n ’m (la [’x] (’k + ’x)) ’h),
     n∶ℕ ⇨ m∶ℕ ⇨ k∶ℕ ⇨ h∶(’n =ₙ ’m) ⇨ ’k + ’n =ₙ ’k + ’m)
 
 /-- n = m → n + k = m + k -/
 def cong_add_r :=
   (la [’n, ’m, ’k, ’h]
-    (□ rw [
-      ℕ, ’n, ’m,
-      la [’x] (’n + ’k =ₙ ’x + ’k),
-      ’h, ab refl [ℕ, ’n + ’k]
-    ]),
+    (cong ℕ ’n ’m (la [’x] (’x + ’k)) ’h),
     n∶ℕ ⇨ m∶ℕ ⇨ k∶ℕ ⇨ h∶(’n =ₙ ’m) ⇨ ’n + ’k =ₙ ’m + ’k)
 
 /-- n + 0 = 0 + n -/
@@ -742,11 +745,7 @@ def add_zero_eq_zero_add :=
     (ab nat_rec [
       la [’n] (’n =ₙ 0 + ’n), ab refl [ℕ, 0],
       la [’n, ’h]
-        (□ rw [
-          ℕ, ’n, 0 + ’n,
-          la [’m] (’n + 1 =ₙ ’m + 1),
-          ’h, ab refl [ℕ, ’n + 1]
-        ]),
+        (cong ℕ ’n (0 + ’n) (la [’m] (’m + 1)) ’h),
       ’n
     ]),
     n∶ℕ ⇨ ’n + 0 =ₙ 0 + ’n)
@@ -758,11 +757,7 @@ def succ_add :=
       la [’n] (suc (’m + ’n) =ₙ suc ’m + ’n),
       ab refl [ℕ, suc ’m],
       la [’n, ’h]
-        (□ rw [
-          ℕ, suc (’m + ’n), suc ’m + ’n,
-          la [’x] (suc (suc (’m + ’n)) =ₙ suc ’x),
-          ’h, ab refl [ℕ, suc (suc (’m + ’n))]
-        ]),
+        (cong ℕ (suc (’m + ’n)) (suc ’m + ’n) (la [’x] (suc ’x)) ’h),
       ’n
     ]),
     m∶ℕ ⇨ n∶ℕ ⇨ suc (’m + ’n) =ₙ suc ’m + ’n)
@@ -778,11 +773,7 @@ def add_comm :=
           ℕ, suc (’m + ’n), suc ’m + ’n,
           la [’x] (suc (’n + ’m) =ₙ ’x),
           □ succ_add [’m, ’n],
-          □ rw [
-            ℕ, ’n + ’m, ’m + ’n,
-            la [’x] (suc (’n + ’m) =ₙ suc ’x),
-            ’h, ab refl [ℕ, suc (’n + ’m)]
-          ]
+          cong ℕ (’n + ’m) (’m + ’n) (la [’x] (suc ’x)) ’h
         ]),
       ’m
     ]),
@@ -795,11 +786,7 @@ def add_assoc :=
       la [’k] (’n + (’m + ’k) =ₙ (’n + ’m) + ’k),
       ab refl [ℕ, ’n + ’m],
       la [’k, ’h]
-        (□ rw [
-          ℕ, ’n + (’m + ’k), (’n + ’m) + ’k,
-          la [’x] (suc (’n + (’m + ’k)) =ₙ suc ’x),
-          ’h, ab refl [ℕ, suc (’n + (’m + ’k))]
-        ]),
+        (cong ℕ (’n + (’m + ’k)) ((’n + ’m) + ’k) (la [’x] (suc ’x)) ’h),
       ’k
     ]),
     n∶ℕ ⇨ m∶ℕ ⇨ k∶ℕ ⇨ ’n + (’m + ’k) =ₙ (’n + ’m) + ’k)
@@ -888,7 +875,7 @@ def succ_mul :=
           (suc (’n + ’m) + ’m * ’n,
             □ cong_add_r [
               suc (’m + ’n), suc (’n + ’m), ’m * ’n,
-              □ cong_suc [
+              □ cong_succ [
                 ’m + ’n, ’n + ’m, □ add_comm [’m, ’n]
               ]
             ]),
@@ -984,11 +971,7 @@ def succ_ne_zero :=
 /-- Successor is injective -/
 def succ_inj :=
   (la [’n, ’m, ’h]
-    (□ rw [
-      ℕ, suc ’n, suc ’m,
-      la [’x] (’n =ₙ ar pred [’x]),
-      ’h, ab refl [ℕ, ’n]
-    ]),
+    (cong ℕ (suc ’n) (suc ’m) (la [’x] (ar pred [’x])) ’h),
     n∶ℕ ⇨ m∶ℕ ⇨ h∶(suc ’n =ₙ suc ’m) ⇨ ’n =ₙ ’m)
 
 /-- ∃ k, n = k + k -/
@@ -1014,7 +997,7 @@ def even_imp_succ_odd :=
       la [’k, ’hk]
         (ab pmk [
           ℕ, la [’j] (suc ’n =ₙ suc (’j + ’j)), ’k,
-          □ cong_suc [’n, ’k + ’k, ’hk]
+          □ cong_succ [’n, ’k + ’k, ’hk]
         ]),
       ’h
     ]),
@@ -1031,11 +1014,9 @@ def odd_imp_succ_even :=
           suc ’k,
           clc ℕ (suc ’n) [
             (suc (suc (’k + ’k)),
-              □ cong_suc [’n, suc (’k + ’k), ’hk]),
+              □ cong_succ [’n, suc (’k + ’k), ’hk]),
             (suc (suc ’k + ’k),
-              □ cong_suc [suc (’k + ’k), suc ’k + ’k, □ succ_add [’k, ’k]]),
-            (suc ’k + suc ’k,
-              ab refl [ℕ, suc ’k + suc ’k]),
+              □ cong_succ [suc (’k + ’k), suc ’k + ’k, □ succ_add [’k, ’k]]),
           ]
         ]),
       ’h
@@ -1087,26 +1068,20 @@ def even_ne_odd_base :=
           la [’j2, ’ih2, ’hh]
             (ap ’ih (j∶ℕ ⇨ ’k + ’k =ₙ suc (’j + ’j) ⇨ ⊥) [
               ’j2,
-              □ eq_symm [
-                ℕ, suc (’j2 + ’j2), ’k + ’k,
-                clc ℕ (suc (’j2 + ’j2)) [
-                  (suc ’j2 + ’j2,
-                    □ succ_add [’j2, ’j2]),
-                  (’k + ’k,
-                    □ succ_inj [suc ’j2 + ’j2, ’k + ’k, ’hh]),
-                ]
+              sclc ℕ (suc (’j2 + ’j2)) [
+                (suc ’j2 + ’j2,
+                  □ succ_add [’j2, ’j2]),
+                (’k + ’k,
+                  □ succ_inj [suc ’j2 + ’j2, ’k + ’k, ’hh]),
               ]
             ]),
           ’j
         ]) (’j + ’j =ₙ suc (’k + ’k) ⇨ ⊥) [
-          □ eq_symm [
-            ℕ, suc (’k + ’k), ’j + ’j,
-            clc ℕ (suc (’k + ’k)) [
-              (suc ’k + ’k,
-                □ succ_add [’k, ’k]),
-              (’j + ’j,
-                □ succ_inj [suc ’k + ’k, ’j + ’j, ’h]),
-            ]
+          sclc ℕ (suc (’k + ’k)) [
+            (suc ’k + ’k,
+              □ succ_add [’k, ’k]),
+            (’j + ’j,
+              □ succ_inj [suc ’k + ’k, ’j + ’j, ’h]),
           ]
         ]),
       ’k
@@ -1137,31 +1112,25 @@ def even_ne_odd :=
 /-- (a + a) + (b + b) = (a + b) + (a + b) -/
 def double_add :=
   (la [’a, ’b]
-    (□ eq_symm [
-      ℕ,
-      (’a + ’b) + (’a + ’b),
-      (’a + ’a) + (’b + ’b),
-      clc ℕ ((’a + ’b) + (’a + ’b)) [
-        (’a + (’b + (’a + ’b)),
-          ⇐ □ add_assoc [’a, ’b, ’a + ’b]),
-        (’a + (’a + (’b + ’b)),
-          □ cong_add_l [
-            ’b + (’a + ’b), ’a + (’b + ’b), ’a,
-            clc ℕ (’b + (’a + ’b)) [
-              ((’b + ’a) + ’b,
-                □ add_assoc [’b, ’a, ’b]),
-              ((’a + ’b) + ’b,
-                □ cong_add_r [
-                  ’b + ’a, ’a + ’b, ’b,
-                  □ add_comm [’b, ’a]
-                ]),
-              (’a + (’b + ’b),
-                ⇐ □ add_assoc [’a, ’b, ’b]),
-            ]
-          ]),
-        ((’a + ’a) + (’b + ’b),
-          □ add_assoc [’a, ’a, ’b + ’b]),
-      ]
+    (sclc ℕ ((’a + ’b) + (’a + ’b)) [
+      (’a + (’b + (’a + ’b)),
+        ⇐ □ add_assoc [’a, ’b, ’a + ’b]),
+      (’a + (’a + (’b + ’b)),
+        □ cong_add_l [
+          ’b + (’a + ’b), ’a + (’b + ’b), ’a,
+          clc ℕ (’b + (’a + ’b)) [
+            ((’b + ’a) + ’b,
+              □ add_assoc [’b, ’a, ’b]),
+            ((’a + ’b) + ’b,
+              □ cong_add_r [
+                ’b + ’a, ’a + ’b, ’b, □ add_comm [’b, ’a]
+              ]),
+            (’a + (’b + ’b),
+              ⇐ □ add_assoc [’a, ’b, ’b]),
+          ]
+        ]),
+      ((’a + ’a) + (’b + ’b),
+        □ add_assoc [’a, ’a, ’b + ’b]),
     ]),
     a∶ℕ ⇨ b∶ℕ ⇨ (’a + ’a) + (’b + ’b) =ₙ (’a + ’b) + (’a + ’b))
 
@@ -1193,7 +1162,7 @@ def double_inj :=
               □ succ_ne_zero [suc ’n + ’n, ’h]
             ]),
           la [’p, ’ih2, ’h]
-            (□ cong_suc [
+            (□ cong_succ [
               ’n, ’p,
               ap ’ih (m∶ℕ ⇨ ’n + ’n =ₙ ’m + ’m ⇨ ’n =ₙ ’m) [
                 ’p,
@@ -1287,8 +1256,6 @@ def odd_sq_odd :=
                 ℕ, la [’w] (suc (’k + ’k) * suc (’k + ’k) =ₙ suc (’w + ’w)),
                 ’k + ’j,
                 clc ℕ (suc (’k + ’k) * suc (’k + ’k)) [
-                  (suc (’k + ’k) + (suc (’k + ’k) * (’k + ’k)),
-                    ab refl [ℕ, suc (’k + ’k) + (suc (’k + ’k) * (’k + ’k))]),
                   (suc (’k + ’k) + (’j + ’j),
                     □ cong_add_l [
                       suc (’k + ’k) * (’k + ’k),
@@ -1304,7 +1271,7 @@ def odd_sq_odd :=
                   (suc ((’k + ’k) + (’j + ’j)),
                     ⇐ □ succ_add [’k + ’k, ’j + ’j]),
                   (suc ((’k + ’j) + (’k + ’j)),
-                    □ cong_suc [
+                    □ cong_succ [
                       (’k + ’k) + (’j + ’j),
                       (’k + ’j) + (’k + ’j),
                       □ double_add [’k, ’j]
@@ -1368,15 +1335,11 @@ def double_mul :=
               ’b,
               clc ℕ ((suc ’a + ’a) * ’b) [
                 (suc (’a + ’a) * ’b,
-                  □ rw [
-                    ℕ, suc ’a + ’a, suc (’a + ’a),
-                    la [’x] ((suc ’a + ’a) * ’b =ₙ ’x * ’b),
-                    □ eq_symm [
-                      ℕ, suc (’a + ’a), suc ’a + ’a,
-                      □ succ_add [’a, ’a]
-                    ],
-                    ab refl [ℕ, (suc ’a + ’a) * ’b]
-                  ]),
+                  cong ℕ (suc ’a + ’a)
+                    (suc (’a + ’a)) (la [’x] (’x * ’b))
+                    (□ eq_symm [
+                      ℕ, suc (’a + ’a), suc ’a + ’a, □ succ_add [’a, ’a]
+                    ])),
                 (’b + ((’a + ’a) * ’b),
                   □ succ_mul [’a + ’a, ’b]),
               ]
@@ -1625,7 +1588,7 @@ def ldefs := [
   ("zero_plus_zero_eq_zero", zero_plus_zero_eq_zero),
   ("zero_plus_one_eq_one", zero_plus_one_eq_one),
   ("two_plus_two_eq_four", two_plus_two_eq_four),
-  ("cong_suc", cong_suc),
+  ("cong_succ", cong_succ),
   ("cong_add_l", cong_add_l),
   ("cong_add_r", cong_add_r),
   ("add_zero_eq_zero_add", add_zero_eq_zero_add),
