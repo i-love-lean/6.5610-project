@@ -1631,79 +1631,27 @@ def two_pow_four_eq_sixteen :=
 
 /-- Fermat's last theorem -/
 def fermat :=
-  (name "sorry",
+  ("sorry",
     a∶ℕ ⇨ b∶ℕ ⇨ c∶ℕ ⇨ n∶ℕ ⇨ (’a =ₙ 0 ⇨ ⊥) ⇨ (’b =ₙ 0 ⇨ ⊥) ⇨ (’c =ₙ 0 ⇨ ⊥) ⇨ (’n =ₙ 0 ⇨ ⊥) ⇨ (’n =ₙ 1 ⇨ ⊥) ⇨ (’n =ₙ 2 ⇨ ⊥) ⇨ ’a ^ ’n + ’b ^ ’n =ₙ ’c ^ ’n ⇨ ⊥)
 
 /-
 ## Test harness
 -/
 
-/-- Can generate a full list with `tail +500 Dependent.lean | rg "^def ([^ ]*) :=\$" -or '  ("$1", $1),'` -/
-def ldefs := [
-  ("a_imp_a", a_imp_a),
-  ("a_imp_b_imp_ab", a_imp_b_imp_ab),
-  ("a_imp_b_imp_ba", a_imp_b_imp_ba),
-  ("not_ab_imp_not_a", not_ab_imp_not_a),
-  ("a_imp_not_not_a", a_imp_not_not_a),
-  ("not_not_not_a_imp_not_a", not_not_not_a_imp_not_a),
-  ("forall_a_exists_b_eq_a", forall_a_exists_b_eq_a),
-  ("if'", if'),
-  ("false_elim", false_elim),
-  ("rw", rw),
-  ("eq_symm", eq_symm),
-  ("eq_trans", eq_trans),
-  ("exists_n_eq_zero", exists_n_eq_zero),
-  ("succ_ne_zero", succ_ne_zero),
-  ("nat_ne_false", nat_ne_false),
-  ("nat_ne_unit", nat_ne_unit),
-  ("add'", add'),
-  ("zero_plus_zero_eq_zero", zero_plus_zero_eq_zero),
-  ("zero_plus_one_eq_one", zero_plus_one_eq_one),
-  ("two_plus_two_eq_four", two_plus_two_eq_four),
-  ("cong_succ", cong_succ),
-  ("cong_add_l", cong_add_l),
-  ("cong_add_r", cong_add_r),
-  ("add_zero_eq_zero_add", add_zero_eq_zero_add),
-  ("succ_add", succ_add),
-  ("add_comm", add_comm),
-  ("add_assoc", add_assoc),
-  ("pred", pred),
-  ("subt'", subt'),
-  ("four_minus_two_eq_two", four_minus_two_eq_two),
-  ("two_minus_four_eq_zero", two_minus_four_eq_zero),
-  ("mul'", mul'),
-  ("four_times_four_eq_sixteen", four_times_four_eq_sixteen),
-  ("zero_mul", zero_mul),
-  ("succ_mul", succ_mul),
-  ("mul_comm", mul_comm),
-  ("fac", fac),
-  ("twenty_four_eq_four_fac", twenty_four_eq_four_fac),
-  ("fst", fst),
-  ("nat_snd", nat_snd),
-  ("fib", fib),
-  ("fib_seven_eq_thirteen", fib_seven_eq_thirteen),
-  ("succ_inj", succ_inj),
-  ("even_zero", even_zero),
-  ("even_imp_succ_odd", even_imp_succ_odd),
-  ("odd_imp_succ_even", odd_imp_succ_even),
-  ("even_or_odd", even_or_odd),
-  ("mul_two_eq_add", mul_two_eq_add),
-  ("even_ne_odd_base", even_ne_odd_base),
-  ("even_ne_odd", even_ne_odd),
-  ("double_add", double_add),
-  ("double_inj", double_inj),
-  ("mul_even_even", mul_even_even),
-  ("odd_sq_odd", odd_sq_odd),
-  ("even_sq_imp_even", even_sq_imp_even),
-  ("add_eq_zero_l", add_eq_zero_l),
-  ("double_mul", double_mul),
-  ("sq_half", sq_half),
-  ("half_sq", half_sq),
-  ("strong_sqrt_two", strong_sqrt_two),
-  ("sqrt_two_irrational", sqrt_two_irrational),
-  ("pow'", pow'),
-  ("two_pow_four_eq_sixteen", two_pow_four_eq_sixteen),
-].map fun p ↦ (p.1, (dbify [] p.2.1, dbify [] p.2.2))
+open Lean in
+/-- Get all defs in this file with type `Term × Term` -/
+elab "get_defs" : term => do
+  let env ← getEnv
+  let defs ← env.constants.map₂.toArray.filterMapM fun x => do
+    match ← findDeclarationRanges? x.1, x.2, x.2.type with
+    | some range, .defnInfo val, .app (.app (.const `Prod [.zero, .zero]) (.const `Term [])) (.const `Term []) =>
+      return some (range.range.pos.line, x.1, val.value)
+    | _, _, _ =>
+      return none
+  let tpair := mkApp2 (mkConst `Prod [.zero, .zero]) (mkConst `Term) (mkConst `Term)
+  let edefs := defs.qsort (·.1 < ·.1) |>.toList.map fun (_, s, x) ↦
+    mkApp4 (mkConst `Prod.mk [.zero, .zero]) (mkConst `String) tpair (toExpr s.getString!) x
+  Meta.mkArrayLit (mkApp2 (mkConst `Prod [.zero, .zero]) (mkConst `String) tpair) edefs
 
 def leftpad s n :=
   "".pushn ' ' (n - s.length) ++ s
@@ -1712,9 +1660,10 @@ def format (a b c d : String) :=
   s!"{a}{leftpad b 27}{leftpad c 10}{leftpad d 10}"
 
 def main : IO Unit := do
+  let adefs := get_defs |>.map fun p ↦ (p.1, (dbify [] p.2.1, dbify [] p.2.2))
   IO.println "   Test                       Time (μs) Nodes"
   let mut defs := .ofList []
-  for p in ldefs do
+  for p in adefs do
     let start ← IO.monoNanosNow
     let res := if checkuser defs p.2.1 p.2.2 then "✅" else "❌"
     IO.println <| format res p.1 s!"{((← IO.monoNanosNow) - start) / 1000}" s!"{p.2.1.sizeOf}"
