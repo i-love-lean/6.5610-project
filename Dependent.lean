@@ -1642,7 +1642,7 @@ open Lean in
 /-- Get all defs in this file with type `Term × Term` -/
 elab "get_defs" : term => do
   let env ← getEnv
-  let defs ← env.constants.map₂.toArray.filterMapM fun x => do
+  let defs ← env.constants.map₂.toArray.filterMapM fun x ↦ do
     match ← findDeclarationRanges? x.1, x.2, x.2.type with
     | some range, .defnInfo val, .app (.app (.const `Prod [.zero, .zero]) (.const `Term [])) (.const `Term []) =>
       return some (range.range.pos.line, x.1, val.value)
