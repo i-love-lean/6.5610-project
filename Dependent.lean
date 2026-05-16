@@ -55,8 +55,10 @@ inductive Term
   | nat_rec
   /-- Unit type -/
   | unit
-  /-- Constructor for unit (no recursor because it's silly) -/
+  /-- Constructor for unit -/
   | intro
+  /-- Recursor for unit -/
+  | unit_rec
   /-- False (empty type) -/
   | fls
   /-- Recursor for false -/
@@ -293,10 +295,11 @@ def Term.btype (t : Term) :=
     let μ := sum ’α ’β ⇨ 𝒰
     α∶𝒰 ⇨ β∶𝒰 ⇨ m∶μ ⇨ (a∶’α ⇨ ap ’m μ [ap inl inl.btype [’α, ’β, ’a]]) ⇨ (b∶’β ⇨ ap ’m μ [ap inr inr.btype [’α, ’β, ’b]]) ⇨ s∶(sum ’α ’β) ⇨ ap ’m μ [’s]
   | refl =>
-    α∶𝒰 ⇨ a∶’α ⇨ eq ’a ’a ’α
+    -- We use `𝒰₁` here to allow stating equality of types
+    α∶𝒰₁ ⇨ a∶’α ⇨ eq ’a ’a ’α
   | eq_rec =>
     let μ := x∶’α ⇨ eq ’a ’x ’α ⇨ 𝒰
-    α∶𝒰 ⇨ a∶’α ⇨ m∶μ ⇨ ap ’m μ [’a, ap refl refl.btype [’α, ’a]] ⇨ b∶’α ⇨ h∶(eq ’a ’b ’α) ⇨ ap ’m μ [’b, ’h]
+    α∶𝒰₁ ⇨ a∶’α ⇨ m∶μ ⇨ ap ’m μ [’a, ap refl refl.btype [’α, ’a]] ⇨ b∶’α ⇨ h∶(eq ’a ’b ’α) ⇨ ap ’m μ [’b, ’h]
   | ℕ =>
     𝒰
   | zero =>
@@ -311,10 +314,15 @@ def Term.btype (t : Term) :=
     𝒰
   | intro =>
     unit
+  | unit_rec =>
+    -- This recursor seems useless but actually isn't since it allows us to prove that `unit` only has one element
+    let μ := unit ⇨ 𝒰
+    m∶μ ⇨ ap ’m μ [intro] ⇨ t∶unit ⇨ ap ’m μ [’t]
   | ⊥ =>
     𝒰
   | fls_rec =>
-    m∶(⊥ ⇨ 𝒰) ⇨ f∶⊥ ⇨ ap ’m (⊥ ⇨ 𝒰) [’f]
+    let μ := ⊥ ⇨ 𝒰
+    m∶μ ⇨ f∶⊥ ⇨ ap ’m μ [’f]
   | _ =>
     t
 -- We need a termination proof here because Lean is stupid
@@ -327,7 +335,7 @@ open Lean Elab Term in
 /-- Compute `dbtype` at compile-time -/
 elab "precompute_dbtypes" : term => do
   return toExpr <|
-    #[pmk, prod_rec, inl, inr, sum_rec, refl, eq_rec, ℕ, zero, succ, nat_rec, unit, intro, ⊥, fls_rec].map (dbify [] ·.btype)
+    #[pmk, prod_rec, inl, inr, sum_rec, refl, eq_rec, ℕ, zero, succ, nat_rec, unit, intro, unit_rec, ⊥, fls_rec].map (dbify [] ·.btype)
 
 def dbtypes := precompute_dbtypes
 
@@ -347,8 +355,9 @@ def Term.dbtype
   | nat_rec => dbtypes[10]
   | unit => dbtypes[11]
   | intro => dbtypes[12]
-  | ⊥ => dbtypes[13]
-  | fls_rec => dbtypes[14]
+  | unit_rec => dbtypes[13]
+  | ⊥ => dbtypes[14]
+  | fls_rec => dbtypes[15]
   -- We should never call this function with a `name` as `t` so this should be OK?
   | t => ’bad
 
@@ -469,11 +478,13 @@ partial def check (defs : Std.HashMap String (Term × Term)) (env : List Term) :
 
 #guard check (.ofList []) [] sum_rec.dbtype 𝒰₁
 
-#guard check (.ofList []) [] refl.dbtype 𝒰₁
+#guard check (.ofList []) [] refl.dbtype (typ 2)
 
-#guard check (.ofList []) [] eq_rec.dbtype 𝒰₁
+#guard check (.ofList []) [] eq_rec.dbtype (typ 2)
 
 #guard check (.ofList []) [] nat_rec.dbtype (typ 2)
+
+#guard check (.ofList []) [] unit_rec.dbtype 𝒰₁
 
 #guard check (.ofList []) [] fls_rec.dbtype 𝒰₁
 
@@ -557,14 +568,6 @@ def a_imp_b_imp_ba :=
     (ab pmk [’β, const ’α, ’b, ’a]),
     α∶𝒰 ⇨ β∶𝒰 ⇨ a∶’α ⇨ b∶’β ⇨ prod ’β (const ’α))
 
-/-- Get first element of product -/
-def fst :=
-  (la [’α, ’β, ’p]
-    (ab prod_rec [
-      ’α, ’β, const ’α, la [’a, ’b] ’a, ’p
-    ]),
-    α∶𝒰 ⇨ β∶(’α ⇨ 𝒰) ⇨ p∶(prod ’α ’β) ⇨ ’α)
-
 /-- ¬(A ∨ B) → ¬A -/
 def not_ab_imp_not_a :=
   (la [’α, ’β, ’f, ’a]
@@ -579,7 +582,7 @@ def a_imp_not_not_a :=
     (ap ’f (’α ⇨ ⊥) [’a]),
     α∶𝒰 ⇨ a∶’α ⇨ f∶(’α ⇨ ⊥) ⇨ ⊥)
 
-/-- ¬¬¬A → ¬A -/
+/-- ¬¬¬A → ¬A (nontrivial since we don't have the law of excluded middle) -/
 def not_not_not_a_imp_not_a :=
   (la [’α, ’f, ’a]
     (ap ’f (((’α ⇨ ⊥) ⇨ ⊥) ⇨ ⊥) [
@@ -620,7 +623,7 @@ def rw :=
       la [’x, ’h] (ap ’p (’α ⇨ 𝒰) [’x]),
       ’ha, ’b, ’h
     ]),
-    α∶𝒰 ⇨ a∶’α ⇨ b∶’α ⇨ p∶(’α ⇨ 𝒰) ⇨ h∶(eq ’a ’b ’α) ⇨ ha∶(ap ’p (’α ⇨ 𝒰) [’a]) ⇨ ap ’p (’α ⇨ 𝒰) [’b])
+    α∶𝒰₁ ⇨ a∶’α ⇨ b∶’α ⇨ p∶(’α ⇨ 𝒰) ⇨ h∶(eq ’a ’b ’α) ⇨ ha∶(ap ’p (’α ⇨ 𝒰) [’a]) ⇨ ap ’p (’α ⇨ 𝒰) [’b])
 
 /-- a = b → b = a -/
 def eq_symm :=
@@ -693,6 +696,74 @@ def exists_n_eq_zero :=
     ℕ, la [’n] (’n =ₙ 0), 0, ab refl [ℕ, 0]
   ],
     prod ℕ (la [’n] (’n =ₙ 0)))
+
+/-- Zero is not a successor of any number (uses the large elimination "discriminator trick") -/
+def succ_ne_zero :=
+  (la [’n, ’h]
+    (□ rw [
+      ℕ, suc ’n, 0,
+      -- Map 0 to ⊥ and everything else to unit
+      ab nat_rec [const 𝒰, ⊥, la [’k, ’v] unit],
+      -- We can construct a term of type unit so rewriting with h gives us a term of type ⊥
+      ’h, intro
+    ]),
+    n∶ℕ ⇨ h∶(suc ’n =ₙ 0) ⇨ ⊥)
+
+/-- ℕ ≠ ⊥ -/
+def nat_ne_false :=
+  (la [’h]
+    (□ rw [
+      -- 0 has type ℕ, then rewrite ℕ to ⊥ to get a term of type ⊥
+      𝒰, ℕ, ⊥, la [’x] ’x, ’h, 0
+    ]),
+    eq ℕ ⊥ 𝒰 ⇨ ⊥)
+
+/-- ℕ ≠ unit (using a cardinality argument) -/
+def nat_ne_unit :=
+  (la [’h]
+    (ab prod_rec [
+      unit,
+      la [’x] (prod unit (la [’y] (eq ’x ’y unit ⇨ ⊥))),
+      const ⊥,
+      la [’x, ’p]
+        (ab prod_rec [
+          unit,
+          la [’y] (eq ’x ’y unit ⇨ ⊥),
+          const ⊥,
+          la [’y, ’f]
+            (ap ’f (eq ’x ’y unit ⇨ ⊥) [
+              -- Using unit_rec, we can show all elements of unit are equal
+              clc unit ’x [
+                (intro,
+                  ⇐ ab unit_rec [
+                    la [’t] (eq intro ’t unit), ab refl [unit, intro], ’x
+                  ]),
+                (’y,
+                  ab unit_rec [
+                    la [’t] (eq intro ’t unit), ab refl [unit, intro], ’y
+                  ]),
+              ]
+            ]),
+          ’p
+        ]),
+      -- This proves ∃ x y : unit, x ≠ y from which we can derive a contradiction
+      □ rw [
+        𝒰, ℕ, unit,
+        la [’α]
+          (prod ’α (la [’x] (prod ’α (la [’y] (eq ’x ’y ’α ⇨ ⊥))))),
+        ’h,
+        ab pmk [
+          ℕ,
+          la [’x] (prod ℕ (la [’y] (’x =ₙ ’y ⇨ ⊥))),
+          1,
+          ab pmk [
+            ℕ, la [’y] (1 =ₙ ’y ⇨ ⊥), 0,
+            la [’heq] (□ succ_ne_zero [0, ’heq])
+          ]
+        ]
+      ]
+    ]),
+  eq ℕ unit 𝒰 ⇨ ⊥)
 
 /-- Addition -/
 def add' :=
@@ -921,6 +992,14 @@ def twenty_four_eq_four_fac :=
   (ab refl [ℕ, 24],
     24 =ₙ ar fac [4])
 
+/-- Get first element of product -/
+def fst :=
+  (la [’α, ’β, ’p]
+    (ab prod_rec [
+      ’α, ’β, const ’α, la [’a, ’b] ’a, ’p
+    ]),
+    α∶𝒰 ⇨ β∶(’α ⇨ 𝒰) ⇨ p∶(prod ’α ’β) ⇨ ’α)
+
 def nat_pair := prod ℕ (const ℕ)
 
 /-- Get second element of `nat_pair` -/
@@ -936,6 +1015,7 @@ def fib :=
   (la [’n]
     (ar fst [
       ℕ, const ℕ,
+      -- Our state during the loop is the past two Fibonacci numbers
       ab nat_rec [
         const nat_pair, ab pmk [ℕ, const ℕ, 0, 1],
         la [’n, ’nf]
@@ -957,16 +1037,6 @@ def fib_seven_eq_thirteen :=
 /-
 ### Irrationality of √2
 -/
-
-/-- Zero is not a successor of any number (uses the large elimination "discriminator trick") -/
-def succ_ne_zero :=
-  (la [’n, ’h]
-    (□ rw [
-      ℕ, suc ’n, 0,
-      ab nat_rec [const 𝒰, ⊥, la [’k, ’v] unit],
-      ’h, intro
-    ]),
-    n∶ℕ ⇨ h∶(suc ’n =ₙ 0) ⇨ ⊥)
 
 /-- Successor is injective -/
 def succ_inj :=
@@ -1041,7 +1111,7 @@ def even_or_odd :=
     ]),
     n∶ℕ ⇨ sum (even ’n) (odd ’n))
 
-/-- two * n = n + n -/
+/-- 2 * n = n + n -/
 def mul_two_eq_add :=
   (la [’n]
     (□ mul_comm [2, ’n]),
@@ -1573,7 +1643,6 @@ def ldefs := [
   ("a_imp_a", a_imp_a),
   ("a_imp_b_imp_ab", a_imp_b_imp_ab),
   ("a_imp_b_imp_ba", a_imp_b_imp_ba),
-  ("fst", fst),
   ("not_ab_imp_not_a", not_ab_imp_not_a),
   ("a_imp_not_not_a", a_imp_not_not_a),
   ("not_not_not_a_imp_not_a", not_not_not_a_imp_not_a),
@@ -1584,6 +1653,9 @@ def ldefs := [
   ("eq_symm", eq_symm),
   ("eq_trans", eq_trans),
   ("exists_n_eq_zero", exists_n_eq_zero),
+  ("succ_ne_zero", succ_ne_zero),
+  ("nat_ne_false", nat_ne_false),
+  ("nat_ne_unit", nat_ne_unit),
   ("add'", add'),
   ("zero_plus_zero_eq_zero", zero_plus_zero_eq_zero),
   ("zero_plus_one_eq_one", zero_plus_one_eq_one),
@@ -1606,10 +1678,10 @@ def ldefs := [
   ("mul_comm", mul_comm),
   ("fac", fac),
   ("twenty_four_eq_four_fac", twenty_four_eq_four_fac),
+  ("fst", fst),
   ("nat_snd", nat_snd),
   ("fib", fib),
   ("fib_seven_eq_thirteen", fib_seven_eq_thirteen),
-  ("succ_ne_zero", succ_ne_zero),
   ("succ_inj", succ_inj),
   ("even_zero", even_zero),
   ("even_imp_succ_odd", even_imp_succ_odd),
