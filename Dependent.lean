@@ -331,10 +331,9 @@ termination_by
   | prod_rec | sum_rec | eq_rec | nat_rec => 1
   | _ => 0
 
-open Lean Elab Term in
 /-- Compute `dbtype` at compile-time -/
 elab "precompute_dbtypes" : term => do
-  return toExpr <|
+  return Lean.toExpr <|
     #[pmk, prod_rec, inl, inr, sum_rec, refl, eq_rec, ℕ, zero, succ, nat_rec, unit, intro, unit_rec, ⊥, fls_rec].map (dbify [] ·.btype)
 
 def dbtypes := precompute_dbtypes
@@ -1648,10 +1647,9 @@ elab "get_defs" : term => do
       return some (range.range.pos.line, x.1, val.value)
     | _, _, _ =>
       return none
-  let tpair := mkApp2 (mkConst `Prod [.zero, .zero]) (mkConst `Term) (mkConst `Term)
   let edefs := defs.qsort (·.1 < ·.1) |>.toList.map fun (_, s, x) ↦
-    mkApp4 (mkConst `Prod.mk [.zero, .zero]) (mkConst `String) tpair (toExpr s.getString!) x
-  Meta.mkArrayLit (mkApp2 (mkConst `Prod [.zero, .zero]) (mkConst `String) tpair) edefs
+    mkApp4 (mkConst `Prod.mk [.zero, .zero]) (toTypeExpr String) (toTypeExpr (_root_.Term × _root_.Term)) (toExpr s.getString!) x
+  Meta.mkArrayLit (toTypeExpr (String × _root_.Term × _root_.Term)) edefs
 
 def leftpad s n :=
   "".pushn ' ' (n - s.length) ++ s
