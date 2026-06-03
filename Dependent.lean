@@ -529,10 +529,11 @@ def Term.toString : Term → String
   | succ => "(17n)"
   | nat_rec => "(18n)"
   | unit => "(19n)"
-  | intro => "(20n)"
-  | ⊥ => "(21n)"
-  | fls_rec => "(22n)"
-  | name s => s!"(23n {s})"
+  | unit_rec => "(20n)"
+  | intro => "(21n)"
+  | ⊥ => "(22n)"
+  | fls_rec => "(23n)"
+  | name s => s!"(24n {s})"
   | _ => panic "You should call dbify before using toString!"
 
 /-- Serialize a term-type pair -/
@@ -540,7 +541,7 @@ def serialize (p : Term × Term) :=
   s!"'({dbify [] p.1 |>.toString} . {dbify [] p.2 |>.toString})"
 
 -- Hardcode this into external proof checkers
--- #eval toString <$> dbtypes
+-- #eval IO.FS.writeFile "dbtypes" <| "\n".intercalate <| toString <$> dbtypes |>.toList
 
 /-
 ## Proving some stuff
