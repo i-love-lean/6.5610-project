@@ -71,9 +71,9 @@ inductive Term
   /-- Dependent function with named first type -/
   | vfn (s : String) (α β : Term)
 -- `Inhabited` is for panicking
--- The `BEq` things let us compare terms
+-- `BEq` let us compare terms
 -- We need `ToExpr` for metaprogamming
-deriving Inhabited, BEq, ReflBEq, LawfulBEq, Lean.ToExpr
+deriving Inhabited, BEq, Lean.ToExpr
 
 open Term
 
@@ -141,7 +141,7 @@ def free (s : String) : Term → Bool
 def gensym (s : String) (t t' : Term) : Id String := do
   let mut i := 0
   -- This heuristic seems pretty fast in practice
-  while let s' := s ++ toString i; free s' t || free s' t' do
+  while (let s' := s ++ toString i; free s' t || free s' t') do
     i := i + 1
   return s ++ toString i
 
